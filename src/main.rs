@@ -1,12 +1,16 @@
 mod backend;
-use backend::system_monitor::SystemMonitor;
-use tokio::runtime::Runtime;
+use backend::system_monitor::SystemSpecs;
 
 fn main() {
-    let rt = Runtime::new().unwrap();
-    let metrics = rt.block_on(SystemMonitor::collect_metrics());
+    println!("🔍 Detecting system hardware...");
+    let system_specs = SystemSpecs::detect();
+    
+    println!("🛠 Recommended Configuration:");
+    let config = system_specs.recommend_config();
+    println!("{}", serde_json::to_string_pretty(&config).unwrap());
 
-    for (key, value) in metrics.iter() {
-        println!("{}: {}", key, value);
-    }
+    println!("💾 Saving configuration to `config.json`...");
+    system_specs.save_config();
+
+    println!("✅ System detection complete!");
 }

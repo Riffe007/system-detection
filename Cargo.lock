@@ -48,7 +48,9 @@ dependencies = [
  "log",
  "num_cpus",
  "nvml-wrapper",
+ "raw-cpuid",
  "serde",
+ "serde_json",
  "sysinfo",
  "tokio",
  "toml",
@@ -671,6 +673,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c1f1914ce909e1658d9907913b4b91947430c7d9be598b15a1912935b8c04801"
 dependencies = [
  "proc-macro2",
+]
+
+[[package]]
+name = "raw-cpuid"
+version = "10.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6c297679cb867470fa8c9f67dbba74a78d78e3e98d7cf2b08d6d71540f797332"
+dependencies = [
+ "bitflags 1.3.2",
 ]
 
 [[package]]
