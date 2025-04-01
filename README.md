@@ -102,7 +102,6 @@ Reach out at timothy@riffeandassociates.com or visit https://www.riffe.tech
 
 ### 🔏 MIT LICENSE File (`LICENSE`)
 
-I'll also prep the text for the MIT License to include in the repo:
 
 ```text
 MIT License
