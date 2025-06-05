@@ -7,6 +7,8 @@ mod backend;
 mod core;
 mod services;
 mod commands;
+#[cfg(test)]
+mod tests;
 
 use std::sync::Arc;
 use tauri::{Manager, State};

@@ -1,2 +1,3 @@
-// Tauri commands module
-// Additional commands can be added here
+pub mod config;
+
+pub use config::*;
