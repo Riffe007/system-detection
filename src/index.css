@@ -1,0 +1,36 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --color-monitor-50: #eff6ff;
+    --color-monitor-100: #dbeafe;
+    --color-monitor-200: #bfdbfe;
+    --color-monitor-300: #93c5fd;
+    --color-monitor-400: #60a5fa;
+    --color-monitor-500: #3b82f6;
+    --color-monitor-600: #2563eb;
+    --color-monitor-700: #1d4ed8;
+    --color-monitor-800: #1e40af;
+    --color-monitor-900: #1e3a8a;
+  }
+}
+
+@layer components {
+  .metric-card {
+    @apply bg-gray-800 rounded-lg p-6 shadow-lg;
+  }
+
+  .metric-value {
+    @apply text-2xl font-bold text-white;
+  }
+
+  .metric-label {
+    @apply text-sm text-gray-400;
+  }
+
+  .metric-grid {
+    @apply grid grid-cols-1 lg:grid-cols-2 gap-6;
+  }
+}

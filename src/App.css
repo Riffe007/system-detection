@@ -1,0 +1,32 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+  
+  body {
+    @apply antialiased;
+  }
+}
+
+@layer components {
+  .metric-card {
+    @apply bg-gray-800 rounded-lg p-6 border border-gray-700 
+           hover:border-gray-600 transition-colors duration-200;
+  }
+  
+  .metric-value {
+    @apply text-2xl font-bold text-monitor-400;
+  }
+  
+  .metric-label {
+    @apply text-sm text-gray-400 uppercase tracking-wider;
+  }
+  
+  .chart-container {
+    @apply w-full h-64 bg-gray-800 rounded-lg p-4;
+  }
+}
