@@ -3,7 +3,7 @@ use parking_lot::RwLock;
 use std::collections::VecDeque;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
-use sysinfo::{System, SystemExt};
+use sysinfo::{System, RefreshKind, MemoryRefreshKind};
 
 use crate::core::{
     MemoryMetrics, Metric, MetricType, MetricValue, Monitor, MonitorConfig, MonitorError,
@@ -23,7 +23,7 @@ impl MemoryMonitor {
         Self {
             state: Arc::new(RwLock::new(MonitorState::Uninitialized)),
             config: Arc::new(RwLock::new(MonitorConfig::default())),
-            system: Arc::new(RwLock::new(System::new_all())),
+            system: Arc::new(RwLock::new(System::new_with_specifics(RefreshKind::everything()))),
             metrics_history: Arc::new(RwLock::new(VecDeque::new())),
             last_update: Arc::new(RwLock::new(SystemTime::now())),
         }
@@ -31,7 +31,7 @@ impl MemoryMonitor {
 
     fn collect_memory_metrics(&self) -> Result<MemoryMetrics> {
         let mut system = self.system.write();
-        system.refresh_memory();
+        system.refresh_memory_specifics(MemoryRefreshKind::everything());
 
         let total_memory = system.total_memory();
         let used_memory = system.used_memory();
@@ -93,7 +93,7 @@ impl Monitor for MemoryMonitor {
         
         // Initialize system info
         let mut system = self.system.write();
-        system.refresh_memory();
+        system.refresh_memory_specifics(MemoryRefreshKind::everything());
         
         *self.state.write() = MonitorState::Running;
         Ok(())

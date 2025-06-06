@@ -6,7 +6,7 @@
 mod backend;
 mod core;
 mod services;
-mod commands;
+// mod commands; // TODO: Enable after fixing integration
 #[cfg(test)]
 mod tests;
 

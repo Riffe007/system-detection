@@ -6,6 +6,6 @@ pub mod config;
 
 pub use error::{MonitorError, Result};
 pub use metrics::{Metric, MetricType, MetricValue};
-pub use monitor::{Monitor, MonitorConfig, MonitorState};
+pub use monitor::{Monitor, MonitorConfig, MonitorState, MonitorManager};
 pub use types::*;
 pub use config::{AppConfig, ConfigManager, MonitoringConfig, MonitorSettings};

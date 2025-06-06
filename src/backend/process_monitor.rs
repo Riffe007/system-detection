@@ -3,7 +3,7 @@ use parking_lot::RwLock;
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
-use sysinfo::{System, SystemExt, ProcessExt, PidExt, Pid};
+use sysinfo::{System, RefreshKind, ProcessRefreshKind, Process, Pid, ProcessStatus, DiskUsage};
 
 use crate::core::{
     ProcessMetrics, Metric, MetricType, MetricValue, Monitor, MonitorConfig, MonitorError,
@@ -53,7 +53,7 @@ impl ProcessMonitor {
         Self {
             state: Arc::new(RwLock::new(MonitorState::Uninitialized)),
             config: Arc::new(RwLock::new(MonitorConfig::default())),
-            system: Arc::new(RwLock::new(System::new_all())),
+            system: Arc::new(RwLock::new(System::new_with_specifics(RefreshKind::everything()))),
             metrics_history: Arc::new(RwLock::new(VecDeque::new())),
             last_update: Arc::new(RwLock::new(SystemTime::now())),
             process_cpu_history: Arc::new(RwLock::new(HashMap::new())),
@@ -72,7 +72,7 @@ impl ProcessMonitor {
 
     fn collect_process_metrics(&self) -> Result<Vec<ProcessMetrics>> {
         let mut system = self.system.write();
-        system.refresh_processes();
+        system.refresh_processes_specifics(ProcessRefreshKind::everything());
         
         let mut metrics = Vec::new();
         let filter = self.filter.read().clone();

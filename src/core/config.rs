@@ -216,8 +216,8 @@ impl Default for UiConfig {
 }
 
 pub struct ConfigManager {
-    config_path: PathBuf,
-    config: AppConfig,
+    pub config_path: PathBuf,
+    pub config: AppConfig,
 }
 
 impl ConfigManager {

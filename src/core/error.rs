@@ -26,6 +26,9 @@ pub enum MonitorError {
     #[error("GPU error: {0}")]
     GpuError(String),
     
+    #[error("Collection error: {0}")]
+    CollectionError(String),
+    
     #[error("Unknown error: {0}")]
     Unknown(String),
 }

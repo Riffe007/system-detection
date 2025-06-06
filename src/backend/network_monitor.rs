@@ -3,7 +3,7 @@ use parking_lot::RwLock;
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
-use sysinfo::{System, SystemExt, NetworkExt, NetworksExt};
+use sysinfo::{System, RefreshKind, Networks, NetworkData};
 
 use crate::core::{
     NetworkMetrics, Metric, MetricType, MetricValue, Monitor, MonitorConfig, MonitorError,
@@ -35,7 +35,7 @@ impl NetworkMonitor {
         Self {
             state: Arc::new(RwLock::new(MonitorState::Uninitialized)),
             config: Arc::new(RwLock::new(MonitorConfig::default())),
-            system: Arc::new(RwLock::new(System::new_all())),
+            system: Arc::new(RwLock::new(System::new_with_specifics(RefreshKind::everything()))),
             metrics_history: Arc::new(RwLock::new(VecDeque::new())),
             last_update: Arc::new(RwLock::new(SystemTime::now())),
             previous_stats: Arc::new(RwLock::new(HashMap::new())),
@@ -43,16 +43,15 @@ impl NetworkMonitor {
     }
 
     fn collect_network_metrics(&self) -> Result<Vec<NetworkMetrics>> {
-        let mut system = self.system.write();
-        system.refresh_networks();
-        system.refresh_networks_list();
+        let mut networks = Networks::new_with_refreshed_list();
+        networks.refresh();
 
         let mut metrics = Vec::new();
         let mut current_stats = HashMap::new();
         let now = SystemTime::now();
         let previous_stats = self.previous_stats.read();
 
-        for (interface_name, network) in system.networks() {
+        for (interface_name, network) in networks.iter() {
             let bytes_sent = network.total_transmitted();
             let bytes_received = network.total_received();
             let packets_sent = network.total_packets_transmitted();
@@ -238,10 +237,9 @@ impl Monitor for NetworkMonitor {
         *self.state.write() = MonitorState::Initializing;
         *self.config.write() = config;
         
-        // Initialize system info
-        let mut system = self.system.write();
-        system.refresh_networks();
-        system.refresh_networks_list();
+        // Initialize network info
+        let mut networks = Networks::new_with_refreshed_list();
+        networks.refresh();
         
         // Collect initial stats
         let _ = self.collect_network_metrics()?;

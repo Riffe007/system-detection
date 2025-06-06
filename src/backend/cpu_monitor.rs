@@ -3,13 +3,44 @@ use parking_lot::RwLock;
 use std::collections::VecDeque;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
-use sysinfo::{CpuExt, System, SystemExt};
+use sysinfo::{System, CpuRefreshKind, RefreshKind};
 
 use crate::core::{
     CpuMetrics, Metric, MetricType, MetricValue, Monitor, MonitorConfig, MonitorError,
     MonitorState, Result,
 };
 
+/// CPU monitoring implementation
+/// 
+/// Monitors CPU usage, frequency, temperature, load average, and per-core metrics.
+/// 
+/// # Features
+/// 
+/// - Overall CPU usage percentage
+/// - Per-core usage tracking
+/// - CPU frequency monitoring
+/// - Temperature sensing (Linux only)
+/// - Load average (1, 5, 15 minutes)
+/// - Process count tracking
+/// - Context switches and interrupts (Linux only)
+/// 
+/// # Example
+/// 
+/// ```rust,no_run
+/// use system_monitor::backend::CpuMonitor;
+/// use system_monitor::core::{Monitor, MonitorConfig};
+/// 
+/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+/// let mut monitor = CpuMonitor::new();
+/// monitor.initialize(MonitorConfig::default()).await?;
+/// 
+/// let metrics = monitor.collect().await?;
+/// for metric in metrics {
+///     println!("{}: {:?}", metric.metric_type, metric.value);
+/// }
+/// # Ok(())
+/// # }
+/// ```
 pub struct CpuMonitor {
     state: Arc<RwLock<MonitorState>>,
     config: Arc<RwLock<MonitorConfig>>,
@@ -19,11 +50,12 @@ pub struct CpuMonitor {
 }
 
 impl CpuMonitor {
+    /// Creates a new CPU monitor instance
     pub fn new() -> Self {
         Self {
             state: Arc::new(RwLock::new(MonitorState::Uninitialized)),
             config: Arc::new(RwLock::new(MonitorConfig::default())),
-            system: Arc::new(RwLock::new(System::new_all())),
+            system: Arc::new(RwLock::new(System::new_with_specifics(RefreshKind::everything()))),
             metrics_history: Arc::new(RwLock::new(VecDeque::new())),
             last_update: Arc::new(RwLock::new(SystemTime::now())),
         }
@@ -31,7 +63,7 @@ impl CpuMonitor {
 
     fn collect_cpu_metrics(&self) -> Result<CpuMetrics> {
         let mut system = self.system.write();
-        system.refresh_cpu();
+        system.refresh_cpu_specifics(CpuRefreshKind::everything());
         system.refresh_processes();
 
         let global_cpu = system.global_cpu_info();
@@ -39,7 +71,7 @@ impl CpuMonitor {
         
         let per_core_usage: Vec<f32> = cpus.iter().map(|cpu| cpu.cpu_usage()).collect();
         
-        let load_avg = system.load_average();
+        let load_avg = System::load_average();
         let load_average = [load_avg.one as f32, load_avg.five as f32, load_avg.fifteen as f32];
 
         let processes: Vec<_> = system.processes().values().collect();

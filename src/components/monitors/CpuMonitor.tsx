@@ -20,14 +20,14 @@ export const CpuMonitor: React.FC<CpuMonitorProps> = ({ metrics }) => {
   }, [metrics.per_core_usage]);
 
   return (
-    <div className="metric-card">
+    <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-lg border border-gray-200 dark:border-gray-700 transition-colors duration-200">
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center space-x-3">
-          <Cpu className="w-6 h-6 text-monitor-400" />
+          <Cpu className="w-6 h-6 text-blue-600 dark:text-blue-400" />
           <h2 className="text-xl font-semibold">CPU Usage</h2>
         </div>
         <div className="text-right">
-          <p className="metric-value">{formatPercent(metrics.usage_percent)}</p>
+          <p className="text-3xl font-bold text-gray-900 dark:text-gray-100">{formatPercent(metrics.usage_percent)}</p>
           <p className="text-sm text-gray-400">{formatFrequency(metrics.frequency_mhz)}</p>
         </div>
       </div>

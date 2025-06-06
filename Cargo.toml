@@ -3,17 +3,26 @@ name = "system-monitor"
 version = "0.1.0"
 edition = "2021"
 
-[build-dependencies]
-tauri-build = { version = "2", features = [] }
+[lib]
+name = "system_monitor"
+path = "src/lib.rs"
+
+[[bin]]
+name = "test_monitors"
+path = "src/bin/test_monitors.rs"
+
+[[bin]]
+name = "quick_test"
+path = "src/bin/quick_test.rs"
+
+[[bin]]
+name = "config_demo"
+path = "src/bin/config_demo.rs"
 
 [dependencies]
-# Tauri
-tauri = { version = "2", features = ["macos-private-api", "tray-icon", "devtools"] }
-tauri-plugin-shell = "2"
-
 # System monitoring
-sysinfo = "0.30"         # System monitoring (CPU, Memory, Process Info)
-nvml-wrapper = { version = "0.9", optional = true }     # NVIDIA GPU monitoring
+sysinfo = "0.30"
+nvml-wrapper = { version = "0.9", optional = true }
 num_cpus = "1.16.0"
 
 # Async runtime
@@ -59,10 +68,5 @@ assert_fs = "1.0"
 predicates = "3.0"
 
 [features]
-default = ["custom-protocol", "nvidia"]
-custom-protocol = ["tauri/custom-protocol"]
+default = ["nvidia"]
 nvidia = ["nvml-wrapper"]
-
-[[bench]]
-name = "monitoring_benchmarks"
-harness = false
