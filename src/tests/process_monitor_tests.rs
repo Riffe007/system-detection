@@ -1,6 +1,6 @@
 use crate::backend::ProcessMonitor;
 use crate::core::{Monitor, MonitorConfig, MonitorState, MetricType, MetricValue};
-use rstest::*;
+
 
 #[tokio::test]
 async fn test_process_monitor_initialization() {
@@ -61,7 +61,7 @@ async fn test_process_monitor_features() {
 async fn test_top_processes_limit() {
     let mut monitor = ProcessMonitor::new();
     let config = MonitorConfig {
-        top_processes_count: 5,
+        top_processes_count: Some(5),
         ..Default::default()
     };
     

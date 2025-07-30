@@ -2,8 +2,8 @@ use async_trait::async_trait;
 use parking_lot::RwLock;
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
-use std::time::{Duration, SystemTime};
-use sysinfo::{System, RefreshKind, Disks, Disk};
+use std::time::SystemTime;
+use sysinfo::{System, RefreshKind, Disks};
 
 use crate::core::{
     DiskMetrics, Metric, MetricType, MetricValue, Monitor, MonitorConfig, MonitorError,
@@ -13,6 +13,7 @@ use crate::core::{
 pub struct StorageMonitor {
     state: Arc<RwLock<MonitorState>>,
     config: Arc<RwLock<MonitorConfig>>,
+    #[allow(dead_code)] // Will be used for future platform-specific optimizations
     system: Arc<RwLock<System>>,
     metrics_history: Arc<RwLock<VecDeque<Vec<DiskMetrics>>>>,
     last_update: Arc<RwLock<SystemTime>>,
@@ -21,8 +22,11 @@ pub struct StorageMonitor {
 
 #[derive(Clone, Debug)]
 struct IoStats {
+    #[allow(dead_code)] // Used in platform-specific implementations
     read_bytes: u64,
+    #[allow(dead_code)] // Used in platform-specific implementations
     write_bytes: u64,
+    #[allow(dead_code)] // Used in platform-specific implementations
     timestamp: SystemTime,
 }
 
@@ -94,10 +98,10 @@ impl StorageMonitor {
 
     fn calculate_io_rates(
         &self,
-        device_name: &str,
-        previous_stats: &HashMap<String, IoStats>,
-        current_stats: &mut HashMap<String, IoStats>,
-        now: SystemTime,
+        _device_name: &str,
+        _previous_stats: &HashMap<String, IoStats>,
+        _current_stats: &mut HashMap<String, IoStats>,
+        _now: SystemTime,
     ) -> (u64, u64) {
         // Platform-specific I/O statistics
         #[cfg(target_os = "linux")]

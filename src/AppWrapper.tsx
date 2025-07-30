@@ -3,6 +3,7 @@ import { Dashboard } from './components/Dashboard';
 import { Header } from './components/Header';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { SystemInfo, SystemMetrics } from './types';
+import { mockTauri, mockListen } from './services/mockTauri';
 import './App.css';
 
 declare global {
@@ -21,8 +22,44 @@ export default function AppWrapper() {
   useEffect(() => {
     const init = async () => {
       try {
+        // Wait a bit for Tauri to be available
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
         // Check if we're in Tauri environment
-        if (window.__TAURI__) {
+        console.log('Tauri window object:', window.__TAURI__);
+        console.log('Window object keys:', Object.keys(window));
+        console.log('All window properties:', Object.getOwnPropertyNames(window));
+        
+        // Try different Tauri detection methods
+        const tauriObject = (window as any).__TAURI__;
+        console.log('Raw Tauri object:', tauriObject);
+        console.log('Tauri object keys:', tauriObject ? Object.keys(tauriObject) : 'undefined');
+        
+        // More robust Tauri detection
+        const isTauriAvailable = window.__TAURI__ && 
+          window.__TAURI__.tauri && 
+          window.__TAURI__.event &&
+          typeof window.__TAURI__.tauri.invoke === 'function';
+        
+        // Alternative detection: check if we're in a Tauri webview
+        const isTauriWebview = navigator.userAgent.includes('Tauri') || 
+          window.location.protocol === 'tauri:' ||
+          window.location.href.includes('tauri');
+        
+        console.log('Is Tauri available:', isTauriAvailable);
+        console.log('Is Tauri webview:', isTauriWebview);
+        console.log('User agent:', navigator.userAgent);
+        console.log('Location:', window.location.href);
+        
+        if (isTauriAvailable || isTauriWebview) {
+          console.log('Using real Tauri backend');
+          
+          // Check if Tauri APIs are actually available
+          if (!window.__TAURI__?.tauri?.invoke) {
+            console.error('Tauri invoke not available, falling back to mock');
+            throw new Error('Tauri APIs not available');
+          }
+          
           const { invoke } = window.__TAURI__.tauri;
           const { listen } = window.__TAURI__.event;
           
@@ -55,52 +92,44 @@ export default function AppWrapper() {
             invoke('stop_monitoring').catch(console.error);
           };
         } else {
-          // Running in browser - use mock data
-          setSystemInfo({
-            hostname: 'localhost',
-            os_name: 'Linux',
-            os_version: '6.11.0',
-            kernel_version: '6.11.0-26-generic',
-            architecture: 'x86_64',
-            cpu_brand: 'Intel Core i7',
-            cpu_cores: 8,
-            cpu_threads: 16,
-            total_memory: 16777216000,
-            boot_time: new Date(Date.now() - 86400000).toISOString()
+          // Running in browser - use mock Tauri service
+          console.log('Tauri not available, using mock service');
+          console.log('Window object:', window);
+          console.log('Tauri object details:', {
+            hasTauri: !!window.__TAURI__,
+            hasTauriTauri: !!(window.__TAURI__ && window.__TAURI__.tauri),
+            hasTauriEvent: !!(window.__TAURI__ && window.__TAURI__.event),
+            invokeType: window.__TAURI__?.tauri?.invoke ? typeof window.__TAURI__.tauri.invoke : 'undefined'
           });
           
-          // Mock metrics
-          setInterval(() => {
-            setMetrics({
-              timestamp: new Date().toISOString(),
-              system_info: systemInfo!,
-              cpu: {
-                usage_percent: Math.random() * 100,
-                frequency_mhz: 2400,
-                per_core_usage: Array(8).fill(0).map(() => Math.random() * 100),
-                temperature_celsius: 45 + Math.random() * 20,
-                load_average: [1.2, 1.5, 1.8],
-                processes_total: 250,
-                processes_running: 5,
-                context_switches: 10000,
-                interrupts: 50000
-              },
-              memory: {
-                total_bytes: 16777216000,
-                used_bytes: 8388608000 + Math.random() * 2147483648,
-                available_bytes: 8388608000,
-                cached_bytes: 2147483648,
-                swap_total_bytes: 4294967296,
-                swap_used_bytes: 1073741824,
-                usage_percent: 50 + Math.random() * 20,
-                swap_usage_percent: 25
-              },
-              gpus: [],
-              disks: [],
-              networks: [],
-              top_processes: []
-            });
-          }, 1000);
+          // Load system info
+          try {
+            const info = await mockTauri.invoke('get_system_info');
+            setSystemInfo(info);
+          } catch (err) {
+            console.error('Failed to load mock system info:', err);
+            setError(`Failed to load system info: ${err}`);
+          }
+          
+          // Start monitoring
+          try {
+            await mockTauri.invoke('start_monitoring');
+            setIsMonitoring(true);
+          } catch (err) {
+            console.error('Failed to start mock monitoring:', err);
+            setError(`Failed to start monitoring: ${err}`);
+          }
+          
+          // Listen for metrics updates
+          const unlisten = await mockListen('system-metrics', (event: any) => {
+            setMetrics(event.payload);
+          });
+          
+          // Cleanup
+          return () => {
+            unlisten();
+            mockTauri.invoke('stop_monitoring').catch(console.error);
+          };
         }
       } catch (err) {
         console.error('Initialization error:', err);
@@ -114,16 +143,34 @@ export default function AppWrapper() {
   }, []);
 
   const toggleMonitoring = async () => {
-    if (!window.__TAURI__) return;
-    
     try {
-      const { invoke } = window.__TAURI__.tauri;
-      if (isMonitoring) {
-        await invoke('stop_monitoring');
-        setIsMonitoring(false);
+      const isTauriAvailable = window.__TAURI__ && 
+        window.__TAURI__.tauri && 
+        window.__TAURI__.event &&
+        typeof window.__TAURI__.tauri.invoke === 'function';
+      
+      const isTauriWebview = navigator.userAgent.includes('Tauri') || 
+        window.location.protocol === 'tauri:' ||
+        window.location.href.includes('tauri');
+        
+      if (isTauriAvailable || isTauriWebview) {
+        const { invoke } = window.__TAURI__.tauri;
+        if (isMonitoring) {
+          await invoke('stop_monitoring');
+          setIsMonitoring(false);
+        } else {
+          await invoke('start_monitoring');
+          setIsMonitoring(true);
+        }
       } else {
-        await invoke('start_monitoring');
-        setIsMonitoring(true);
+        // Use mock service
+        if (isMonitoring) {
+          await mockTauri.invoke('stop_monitoring');
+          setIsMonitoring(false);
+        } else {
+          await mockTauri.invoke('start_monitoring');
+          setIsMonitoring(true);
+        }
       }
     } catch (err) {
       console.error('Failed to toggle monitoring:', err);

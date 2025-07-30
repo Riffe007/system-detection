@@ -1,6 +1,6 @@
 use crate::backend::GpuMonitor;
 use crate::core::{Monitor, MonitorConfig, MonitorState, MetricType};
-use rstest::*;
+
 
 #[tokio::test]
 async fn test_gpu_monitor_initialization() {

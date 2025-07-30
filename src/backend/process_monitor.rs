@@ -3,7 +3,7 @@ use parking_lot::RwLock;
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
-use sysinfo::{System, RefreshKind, ProcessRefreshKind, Process, Pid, ProcessStatus, DiskUsage};
+use sysinfo::{System, RefreshKind, ProcessRefreshKind};
 
 use crate::core::{
     ProcessMetrics, Metric, MetricType, MetricValue, Monitor, MonitorConfig, MonitorError,

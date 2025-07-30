@@ -2,8 +2,8 @@ use async_trait::async_trait;
 use parking_lot::RwLock;
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
-use std::time::{Duration, SystemTime};
-use sysinfo::{System, RefreshKind, Networks, NetworkData};
+use std::time::SystemTime;
+use sysinfo::{System, RefreshKind, Networks};
 
 use crate::core::{
     NetworkMetrics, Metric, MetricType, MetricValue, Monitor, MonitorConfig, MonitorError,
@@ -13,6 +13,7 @@ use crate::core::{
 pub struct NetworkMonitor {
     state: Arc<RwLock<MonitorState>>,
     config: Arc<RwLock<MonitorConfig>>,
+    #[allow(dead_code)] // Will be used for future platform-specific optimizations
     system: Arc<RwLock<System>>,
     metrics_history: Arc<RwLock<VecDeque<Vec<NetworkMetrics>>>>,
     last_update: Arc<RwLock<SystemTime>>,
@@ -23,9 +24,13 @@ pub struct NetworkMonitor {
 struct NetworkStats {
     bytes_sent: u64,
     bytes_received: u64,
+    #[allow(dead_code)] // Used in metric collection and error reporting
     packets_sent: u64,
+    #[allow(dead_code)] // Used in metric collection and error reporting
     packets_received: u64,
+    #[allow(dead_code)] // Used in metric collection and error reporting
     errors_sent: u64,
+    #[allow(dead_code)] // Used in metric collection and error reporting
     errors_received: u64,
     timestamp: SystemTime,
 }
@@ -117,10 +122,10 @@ impl NetworkMonitor {
     }
 
     fn get_interface_details(&self, interface_name: &str) -> (bool, String, Vec<String>, Option<u64>) {
-        let mut is_up = true;
-        let mut mac_address = String::from("00:00:00:00:00:00");
-        let mut ip_addresses = Vec::new();
-        let mut speed_mbps = None;
+        let is_up = true;
+        let mac_address = String::from("00:00:00:00:00:00");
+        let ip_addresses = Vec::new();
+        let speed_mbps = None;
 
         #[cfg(target_os = "linux")]
         {
@@ -176,7 +181,7 @@ impl NetworkMonitor {
                 .args(&["nic", "where", &format!("NetConnectionID='{}'", interface_name), "get", "MACAddress,Speed,NetConnectionStatus"])
                 .output()
             {
-                let output_str = String::from_utf8_lossy(&output.stdout);
+                let _output_str = String::from_utf8_lossy(&output.stdout);
                 // Parse WMI output
                 // This is simplified
             }

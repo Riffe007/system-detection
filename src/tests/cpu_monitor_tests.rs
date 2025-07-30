@@ -1,6 +1,6 @@
 use crate::backend::CpuMonitor;
 use crate::core::{Monitor, MonitorConfig, MonitorState, MetricType};
-use rstest::*;
+// Removed unused rstest import
 use std::time::Duration;
 
 #[tokio::test]
@@ -96,11 +96,8 @@ async fn test_cpu_monitor_historical_metrics() {
     assert!(!historical.is_empty());
 }
 
-#[rstest]
-#[case(0.0, 100.0)]
-#[case(50.0, 50.0)]
-#[case(100.0, 0.0)]
-async fn test_cpu_usage_bounds(#[case] min_usage: f32, #[case] max_usage: f32) {
+#[tokio::test]
+async fn test_cpu_usage_bounds() {
     let mut monitor = CpuMonitor::new();
     let config = MonitorConfig::default();
     

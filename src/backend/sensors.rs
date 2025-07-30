@@ -1,5 +1,4 @@
-use std::collections::HashMap;
-use std::path::Path;
+
 use crate::core::Result;
 
 #[derive(Debug, Clone)]
@@ -26,7 +25,7 @@ pub struct SensorsManager {
 
 impl SensorsManager {
     pub fn new() -> Self {
-        let mut manager = Self {
+        let manager = Self {
             #[cfg(target_os = "linux")]
             hwmon_sensors: HashMap::new(),
         };
@@ -113,7 +112,7 @@ impl SensorsManager {
     }
     
     pub fn read_all_temperatures(&self) -> Vec<SensorReading> {
-        let mut readings = Vec::new();
+        let readings = Vec::new();
         
         #[cfg(target_os = "linux")]
         {
@@ -156,7 +155,7 @@ impl SensorsManager {
     }
     
     pub fn read_fan_speeds(&self) -> Vec<SensorReading> {
-        let mut readings = Vec::new();
+        let readings = Vec::new();
         
         #[cfg(target_os = "linux")]
         {
@@ -198,7 +197,7 @@ impl SensorsManager {
     }
     
     pub fn read_voltages(&self) -> Vec<SensorReading> {
-        let mut readings = Vec::new();
+        let readings = Vec::new();
         
         #[cfg(target_os = "linux")]
         {
@@ -242,7 +241,7 @@ impl SensorsManager {
     }
     
     pub fn read_power_sensors(&self) -> Vec<SensorReading> {
-        let mut readings = Vec::new();
+        let readings = Vec::new();
         
         #[cfg(target_os = "linux")]
         {

@@ -1,4 +1,4 @@
-use system_monitor::core::{ConfigManager, AppConfig};
+use system_monitor::core::config::ConfigManager;
 use system_monitor::services::MonitoringService;
 use std::time::Duration;
 use tokio::time::sleep;

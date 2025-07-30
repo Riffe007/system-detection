@@ -139,7 +139,7 @@ impl CpuMonitor {
         history.push_back(metrics);
         
         // Remove old metrics based on retention policy
-        let cutoff_time = SystemTime::now() - Duration::from_secs(config.retain_history_seconds);
+        let _cutoff_time = SystemTime::now() - Duration::from_secs(config.retain_history_seconds);
         let now = SystemTime::now();
         
         while history.len() > 0 {
@@ -270,7 +270,7 @@ impl Monitor for CpuMonitor {
 
     async fn get_historical_metrics(&self, duration_seconds: u64) -> Result<Vec<Metric>> {
         let history = self.metrics_history.read();
-        let cutoff_time = SystemTime::now() - Duration::from_secs(duration_seconds);
+        let _cutoff_time = SystemTime::now() - Duration::from_secs(duration_seconds);
         
         let mut metrics = Vec::new();
         

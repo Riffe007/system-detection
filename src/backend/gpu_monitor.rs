@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use parking_lot::RwLock;
 use std::collections::VecDeque;
 use std::sync::Arc;
-use std::time::{Duration, SystemTime};
+use std::time::SystemTime;
 
 use crate::core::{
     GpuMetrics, Metric, MetricType, MetricValue, Monitor, MonitorConfig, MonitorError,
@@ -10,7 +10,7 @@ use crate::core::{
 };
 
 #[cfg(feature = "nvidia")]
-use nvml_wrapper::{Nvml, Device as NvmlDevice};
+use nvml_wrapper::Nvml;
 
 pub struct GpuMonitor {
     state: Arc<RwLock<MonitorState>>,

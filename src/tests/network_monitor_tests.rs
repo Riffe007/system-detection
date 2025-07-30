@@ -1,6 +1,6 @@
 use crate::backend::NetworkMonitor;
 use crate::core::{Monitor, MonitorConfig, MonitorState, MetricType, MetricValue};
-use rstest::*;
+
 
 #[tokio::test]
 async fn test_network_monitor_initialization() {
@@ -70,7 +70,8 @@ async fn test_network_throughput_calculation() {
     for metric in throughput_metrics {
         if let MetricValue::Unsigned(bytes_per_sec) = metric.value {
             // Throughput should be non-negative
-            assert!(bytes_per_sec >= 0);
+            // bytes_per_sec is u64, so it's always >= 0
+            assert!(bytes_per_sec >= 0u64);
         }
     }
 }

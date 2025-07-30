@@ -87,7 +87,7 @@ impl MonitoringService {
 
     async fn collect_system_info(&self) -> Result<SystemInfo> {
         use os_info;
-        use sysinfo::{System, RefreshKind, CpuRefreshKind, Cpu};
+        use sysinfo::{System, RefreshKind};
         
         let mut sys = System::new_with_specifics(RefreshKind::everything());
         sys.refresh_all();
@@ -586,15 +586,7 @@ impl MonitoringService {
         *self.metrics_callback.blocking_write() = Some(Box::new(callback));
     }
     
-    pub async fn get_system_info(&self) -> Result<SystemInfo> {
-        if let Some(info) = self.system_info.read().await.clone() {
-            Ok(info)
-        } else {
-            let info = self.collect_system_info().await?;
-            *self.system_info.write().await = Some(info.clone());
-            Ok(info)
-        }
-    }
+
     
     pub async fn start_monitoring(&mut self) -> Result<()> {
         self.initialize().await?;
@@ -614,10 +606,10 @@ impl MonitoringService {
         // Parse collected metrics into structured format
         let mut cpu_metrics = CpuMetrics::default();
         let mut memory_metrics = MemoryMetrics::default();
-        let mut gpu_metrics = Vec::new();
-        let mut disk_metrics = Vec::new();
-        let mut network_metrics = Vec::new();
-        let mut process_metrics = Vec::new();
+        let gpu_metrics = Vec::new();
+        let disk_metrics = Vec::new();
+        let network_metrics = Vec::new();
+        let process_metrics = Vec::new();
 
         // Process CPU metrics
         if let Some(metrics) = all_metrics.get("cpu") {
@@ -657,7 +649,7 @@ impl MonitoringService {
                     }
                     MetricType::CpuTemperature => {
                         if let MetricValue::Float(v) = metric.value {
-                            cpu_metrics.temperature = Some(v as f32);
+                            cpu_metrics.temperature_celsius = Some(v as f32);
                         }
                     }
                     MetricType::SystemLoad => {
@@ -720,7 +712,7 @@ impl MonitoringService {
             }
         }
 
-        let system_info = self.get_system_info().await.unwrap_or_else(|_| SystemInfo {
+        let system_info = self.get_system_info().await.unwrap_or(SystemInfo {
             hostname: String::new(),
             os_name: String::new(),
             os_version: String::new(),

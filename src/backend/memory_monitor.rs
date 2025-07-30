@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use parking_lot::RwLock;
 use std::collections::VecDeque;
 use std::sync::Arc;
-use std::time::{Duration, SystemTime};
+use std::time::SystemTime;
 use sysinfo::{System, RefreshKind, MemoryRefreshKind};
 
 use crate::core::{
@@ -196,7 +196,7 @@ impl Monitor for MemoryMonitor {
         }
     }
 
-    async fn get_historical_metrics(&self, duration_seconds: u64) -> Result<Vec<Metric>> {
+    async fn get_historical_metrics(&self, _duration_seconds: u64) -> Result<Vec<Metric>> {
         let history = self.metrics_history.read();
         let mut metrics = Vec::new();
         

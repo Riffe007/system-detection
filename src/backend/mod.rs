@@ -12,5 +12,4 @@ pub use gpu_monitor::GpuMonitor;
 pub use memory_monitor::MemoryMonitor;
 pub use storage_monitor::StorageMonitor;
 pub use network_monitor::NetworkMonitor;
-pub use process_monitor::{ProcessMonitor, ProcessSortBy, ProcessFilter};
-pub use sensors::{SensorsManager, SensorReading, SensorType};
+pub use process_monitor::ProcessMonitor;
