@@ -29,6 +29,15 @@ export default function AppWrapper() {
     console.log('AppWrapper useEffect running');
     const init = async () => {
       try {
+        console.log('Starting initialization...');
+        
+        // Set a timeout for the entire init process
+        const initTimeout = setTimeout(() => {
+          console.error('Initialization timeout - setting loading to false');
+          setLoading(false);
+          setError('Initialization timed out. Please refresh the page.');
+        }, 10000); // 10 second timeout
+        
         // Wait a bit for Tauri to be available
         await new Promise(resolve => setTimeout(resolve, 500));
         
@@ -134,10 +143,13 @@ export default function AppWrapper() {
             mockTauri.invoke('stop_monitoring').catch(console.error);
           };
         }
+        // Clear the timeout if we complete successfully
+        clearTimeout(initTimeout);
       } catch (err) {
         console.error('Initialization error:', err);
         setError(`Initialization error: ${err}`);
       } finally {
+        console.log('Setting loading to false');
         setLoading(false);
       }
     };

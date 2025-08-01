@@ -19,6 +19,20 @@ export const CpuMonitor: React.FC<CpuMonitorProps> = ({ metrics }) => {
     }));
   }, [metrics.per_core_usage]);
 
+  // Dynamically determine grid columns based on core count
+  const gridCols = useMemo(() => {
+    const coreCount = metrics.per_core_usage.length;
+    if (coreCount <= 4) return 'grid-cols-2 sm:grid-cols-4';
+    if (coreCount <= 8) return 'grid-cols-4 sm:grid-cols-4 md:grid-cols-8';
+    if (coreCount <= 16) return 'grid-cols-4 sm:grid-cols-8 md:grid-cols-8 lg:grid-cols-8';
+    if (coreCount <= 32) return 'grid-cols-8 sm:grid-cols-8 md:grid-cols-16';
+    // For very high core counts, show a simplified view
+    return 'grid-cols-8 sm:grid-cols-12 md:grid-cols-16';
+  }, [metrics.per_core_usage.length]);
+
+  // For systems with many cores, show a summary instead of individual cores
+  const showDetailedCores = metrics.per_core_usage.length <= 32;
+
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-lg border border-gray-200 dark:border-gray-700 transition-colors duration-200">
       <div className="flex items-center justify-between mb-6">
@@ -75,25 +89,56 @@ export const CpuMonitor: React.FC<CpuMonitorProps> = ({ metrics }) => {
           </div>
         </div>
         
-        <div>
-          <p className="metric-label mb-2">Per Core Usage</p>
-          <div className="grid grid-cols-4 gap-2">
-            {coreData.map((core) => (
-              <div key={core.core} className="text-center">
-                <div className="relative h-20 bg-gray-700 rounded overflow-hidden">
-                  <div 
-                    className="absolute bottom-0 left-0 right-0 bg-monitor-500 transition-all duration-300"
-                    style={{ height: `${core.usage}%` }}
-                  />
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="text-xs font-medium">{formatPercent(core.usage, 0)}</span>
+        {showDetailedCores ? (
+          <div>
+            <p className="metric-label mb-2">Per Core Usage ({metrics.per_core_usage.length} cores)</p>
+            <div className={`grid ${gridCols} gap-1`}>
+              {coreData.map((core, index) => (
+                <div key={core.core} className="text-center group">
+                  <div className="relative h-12 bg-gray-700 rounded overflow-hidden">
+                    <div 
+                      className="absolute bottom-0 left-0 right-0 bg-monitor-500 transition-all duration-300"
+                      style={{ height: `${core.usage}%` }}
+                    />
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <span className="text-xs font-medium">{formatPercent(core.usage, 0)}</span>
+                    </div>
                   </div>
+                  <p className="text-xs text-gray-400 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">C{index}</p>
                 </div>
-                <p className="text-xs text-gray-400 mt-1">{core.core}</p>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-        </div>
+        ) : (
+          <div>
+            <p className="metric-label mb-2">Core Summary ({metrics.per_core_usage.length} cores)</p>
+            <div className="grid grid-cols-3 gap-4 text-sm">
+              <div>
+                <p className="text-gray-400">Average</p>
+                <p className="text-lg font-semibold">
+                  {formatPercent(
+                    metrics.per_core_usage.reduce((a, b) => a + b, 0) / metrics.per_core_usage.length
+                  )}
+                </p>
+              </div>
+              <div>
+                <p className="text-gray-400">Highest</p>
+                <p className="text-lg font-semibold">
+                  {formatPercent(Math.max(...metrics.per_core_usage))}
+                </p>
+              </div>
+              <div>
+                <p className="text-gray-400">Lowest</p>
+                <p className="text-lg font-semibold">
+                  {formatPercent(Math.min(...metrics.per_core_usage))}
+                </p>
+              </div>
+            </div>
+            <div className="mt-2 text-xs text-gray-400">
+              Individual core view disabled for high core count systems
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
