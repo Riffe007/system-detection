@@ -8,7 +8,7 @@ interface SystemOverviewProps {
 }
 
 export const SystemOverview: React.FC<SystemOverviewProps> = ({ systemInfo }) => {
-  const uptimeSeconds = Math.floor((new Date().getTime() - new Date(systemInfo.boot_time).getTime()) / 1000);
+  const uptimeSeconds = Math.floor(Date.now() / 1000) - systemInfo.boot_time;
   
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg p-6 mb-6 shadow-lg border border-gray-200 dark:border-gray-700 transition-colors duration-200">

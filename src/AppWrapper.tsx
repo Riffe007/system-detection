@@ -4,6 +4,7 @@ import { Header } from './components/Header';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { SystemInfo, SystemMetrics } from './types';
 import { mockTauri, mockListen } from './services/mockTauri';
+import { detectTauriEnvironment, getTauriInvoke, getTauriListen } from './services/tauriDetector';
 import './App.css';
 
 declare global {
@@ -13,55 +14,51 @@ declare global {
 }
 
 export default function AppWrapper() {
+  console.log('AppWrapper component loaded');
+  
   const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
   const [metrics, setMetrics] = useState<SystemMetrics | null>(null);
   const [isMonitoring, setIsMonitoring] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isMockData, setIsMockData] = useState(true);
+
+  console.log('AppWrapper state initialized');
 
   useEffect(() => {
+    console.log('AppWrapper useEffect running');
     const init = async () => {
       try {
         // Wait a bit for Tauri to be available
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise(resolve => setTimeout(resolve, 500));
         
-        // Check if we're in Tauri environment
-        console.log('Tauri window object:', window.__TAURI__);
-        console.log('Window object keys:', Object.keys(window));
-        console.log('All window properties:', Object.getOwnPropertyNames(window));
+        // Use our comprehensive Tauri detector
+        const isTauri = await detectTauriEnvironment();
         
-        // Try different Tauri detection methods
-        const tauriObject = (window as any).__TAURI__;
-        console.log('Raw Tauri object:', tauriObject);
-        console.log('Tauri object keys:', tauriObject ? Object.keys(tauriObject) : 'undefined');
+        console.log('=== Tauri Detection Result ===');
+        console.log('Is Tauri environment:', isTauri);
         
-        // More robust Tauri detection
-        const isTauriAvailable = window.__TAURI__ && 
-          window.__TAURI__.tauri && 
-          window.__TAURI__.event &&
-          typeof window.__TAURI__.tauri.invoke === 'function';
-        
-        // Alternative detection: check if we're in a Tauri webview
-        const isTauriWebview = navigator.userAgent.includes('Tauri') || 
-          window.location.protocol === 'tauri:' ||
-          window.location.href.includes('tauri');
-        
-        console.log('Is Tauri available:', isTauriAvailable);
-        console.log('Is Tauri webview:', isTauriWebview);
-        console.log('User agent:', navigator.userAgent);
-        console.log('Location:', window.location.href);
-        
-        if (isTauriAvailable || isTauriWebview) {
+        if (isTauri) {
           console.log('Using real Tauri backend');
+          console.log('TAURI DETECTED - NOT USING MOCK SERVICE');
           
-          // Check if Tauri APIs are actually available
-          if (!window.__TAURI__?.tauri?.invoke) {
-            console.error('Tauri invoke not available, falling back to mock');
-            throw new Error('Tauri APIs not available');
+          // Add a visual indicator
+          document.title = 'System Monitor (Tauri)';
+          setIsMockData(false);
+          
+          // Get Tauri invoke function
+          const invoke = await getTauriInvoke();
+          if (!invoke) {
+            console.error('Failed to get Tauri invoke function');
+            throw new Error('Tauri invoke not available');
           }
           
-          const { invoke } = window.__TAURI__.tauri;
-          const { listen } = window.__TAURI__.event;
+          // Get listen function
+          const listen = await getTauriListen();
+          if (!listen) {
+            console.error('Failed to get Tauri listen function');
+            throw new Error('Tauri listen not available');
+          }
           
           // Load system info
           try {
@@ -94,6 +91,12 @@ export default function AppWrapper() {
         } else {
           // Running in browser - use mock Tauri service
           console.log('Tauri not available, using mock service');
+          console.log('USING MOCK SERVICE - NOT REAL SYSTEM DATA');
+          
+          // Add a visual indicator
+          document.title = 'System Monitor (Mock Data)';
+          setIsMockData(true);
+          
           console.log('Window object:', window);
           console.log('Tauri object details:', {
             hasTauri: !!window.__TAURI__,
@@ -144,17 +147,13 @@ export default function AppWrapper() {
 
   const toggleMonitoring = async () => {
     try {
-      const isTauriAvailable = window.__TAURI__ && 
-        window.__TAURI__.tauri && 
-        window.__TAURI__.event &&
-        typeof window.__TAURI__.tauri.invoke === 'function';
-      
-      const isTauriWebview = navigator.userAgent.includes('Tauri') || 
-        window.location.protocol === 'tauri:' ||
-        window.location.href.includes('tauri');
+      const isTauri = await detectTauriEnvironment();
         
-      if (isTauriAvailable || isTauriWebview) {
-        const { invoke } = window.__TAURI__.tauri;
+      if (isTauri) {
+        const invoke = await getTauriInvoke();
+        if (!invoke) {
+          throw new Error('Tauri invoke not available');
+        }
         if (isMonitoring) {
           await invoke('stop_monitoring');
           setIsMonitoring(false);
@@ -197,6 +196,15 @@ export default function AppWrapper() {
           isMonitoring={isMonitoring}
           onToggleMonitoring={toggleMonitoring}
         />
+        
+        {isMockData && (
+          <div className="mx-4 mt-4 p-4 bg-yellow-100 dark:bg-yellow-900/50 border border-yellow-300 dark:border-yellow-700 rounded-lg">
+            <p className="text-yellow-700 dark:text-yellow-200 font-bold">
+              ⚠️ MOCK DATA MODE - This is not real system data! 
+              To see real data, run the application through Tauri, not in the browser.
+            </p>
+          </div>
+        )}
         
         {error && (
           <div className="mx-4 mt-4 p-4 bg-red-100 dark:bg-red-900/50 border border-red-300 dark:border-red-700 rounded-lg">

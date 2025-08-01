@@ -1,8 +1,8 @@
 import React, { useMemo } from 'react';
-import { LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Cpu } from 'lucide-react';
 import { CpuMetrics } from '../../types';
-import { formatPercent, formatFrequency, getUsageColor, getUsageGradient } from '../../utils/format';
+import { formatPercent, formatFrequency } from '../../utils/format';
 import { useMetricsHistory } from '../../hooks/useMetricsHistory';
 
 interface CpuMonitorProps {

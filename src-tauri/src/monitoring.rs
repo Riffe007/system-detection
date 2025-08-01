@@ -26,6 +26,8 @@ pub struct CpuMetrics {
     pub load_average: [f32; 3],
     pub processes_total: usize,
     pub processes_running: usize,
+    pub context_switches: u64,
+    pub interrupts: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -150,6 +152,8 @@ impl MonitoringService {
             processes_running: sys.processes().values()
                 .filter(|p| matches!(p.status(), ProcessStatus::Run))
                 .count(),
+            context_switches: 0, // Not available in sysinfo 
+            interrupts: 0, // Not available in sysinfo
         };
         
         // Memory metrics

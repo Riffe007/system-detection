@@ -11,14 +11,26 @@ type ServiceState = Arc<RwLock<MonitoringService>>;
 
 #[tauri::command]
 async fn get_system_info(state: State<'_, ServiceState>) -> Result<SystemInfo, String> {
+    println!("=== get_system_info called ===");
     let service = state.read().await;
-    service.get_system_info()
-        .await
-        .map_err(|e| e.to_string())
+    match service.get_system_info().await {
+        Ok(info) => {
+            println!("System info retrieved successfully:");
+            println!("  Hostname: {}", info.hostname);
+            println!("  OS: {} {}", info.os_name, info.os_version);
+            println!("  CPU: {}", info.cpu_brand);
+            Ok(info)
+        }
+        Err(e) => {
+            println!("ERROR getting system info: {}", e);
+            Err(e.to_string())
+        }
+    }
 }
 
 #[tauri::command]
 async fn start_monitoring(state: State<'_, ServiceState>, app: tauri::AppHandle) -> Result<(), String> {
+    println!("start_monitoring called");
     let mut service = state.write().await;
     
     // Clone app handle for the callback
@@ -53,12 +65,28 @@ fn main() {
     tauri::Builder::default()
         .manage(service)
         .setup(|app| {
+            println!("=== Tauri App Setup ===");
+            println!("App is initializing...");
+            
             #[cfg(debug_assertions)]
             {
                 if let Some(window) = app.get_webview_window("main") {
+                    println!("Opening devtools for main window");
                     window.open_devtools();
+                    
+                    // Log window properties
+                    if let Ok(pos) = window.outer_position() {
+                        println!("Window position: {:?}", pos);
+                    }
+                    if let Ok(size) = window.outer_size() {
+                        println!("Window size: {:?}", size);
+                    }
+                } else {
+                    println!("WARNING: Main window not found!");
                 }
             }
+            
+            println!("Tauri setup complete");
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -67,6 +95,17 @@ fn main() {
             stop_monitoring,
             get_current_metrics
         ])
+        .on_window_event(|window, event| {
+            match event {
+                tauri::WindowEvent::Focused(focused) => {
+                    println!("Window {} focused: {}", window.label(), focused);
+                }
+                tauri::WindowEvent::Resized(size) => {
+                    println!("Window {} resized to: {:?}", window.label(), size);
+                }
+                _ => {}
+            }
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

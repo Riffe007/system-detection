@@ -11,7 +11,7 @@ const mockSystemInfo: SystemInfo = {
   cpu_cores: 8,
   cpu_threads: 8,
   total_memory: 16 * 1024 * 1024 * 1024, // 16GB
-  boot_time: new Date(Date.now() - 3600000).toISOString(), // 1 hour ago
+  boot_time: Math.floor((Date.now() - 3600000) / 1000), // 1 hour ago in seconds
 };
 
 let metricsInterval: NodeJS.Timeout | null = null;

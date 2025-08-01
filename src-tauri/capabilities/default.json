@@ -3,5 +3,7 @@
   "identifier": "default",
   "description": "Default permissions",
   "windows": ["main"],
-  "permissions": []
+  "permissions": [
+    "core:default"
+  ]
 }

@@ -7,7 +7,7 @@ interface MetricPoint {
 
 const MAX_HISTORY_POINTS = 60; // Keep last 60 data points
 
-export function useMetricsHistory(metricName: string, currentValue: number): MetricPoint[] {
+export function useMetricsHistory(_metricName: string, currentValue: number): MetricPoint[] {
   const historyRef = useRef<MetricPoint[]>([]);
   
   useEffect(() => {

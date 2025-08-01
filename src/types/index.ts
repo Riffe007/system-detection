@@ -8,7 +8,7 @@ export interface SystemInfo {
   cpu_cores: number;
   cpu_threads: number;
   total_memory: number;
-  boot_time: string;
+  boot_time: number;
 }
 
 export interface CpuMetrics {

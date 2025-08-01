@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Tauri Test</title>
+</head>
+<body>
+    <h1>Tauri Detection Test</h1>
+    <div id="results"></div>
+    
+    <script>
+        const results = document.getElementById('results');
+        
+        function log(msg) {
+            const p = document.createElement('p');
+            p.textContent = msg;
+            results.appendChild(p);
+            console.log(msg);
+        }
+        
+        // Wait for page to fully load
+        window.addEventListener('DOMContentLoaded', async () => {
+            log('=== Tauri Detection Test ===');
+            log('URL: ' + window.location.href);
+            log('Protocol: ' + window.location.protocol);
+            log('User Agent: ' + navigator.userAgent);
+            
+            // Check for __TAURI__
+            log('window.__TAURI__: ' + (typeof window.__TAURI__));
+            log('window.__TAURI__ exists: ' + (window.__TAURI__ !== undefined));
+            
+            if (window.__TAURI__) {
+                log('__TAURI__ object keys: ' + Object.keys(window.__TAURI__));
+                
+                if (window.__TAURI__.tauri) {
+                    log('__TAURI__.tauri exists');
+                    log('__TAURI__.tauri.invoke type: ' + typeof window.__TAURI__.tauri.invoke);
+                }
+            }
+            
+            // Try to invoke a command
+            if (window.__TAURI__?.tauri?.invoke) {
+                try {
+                    log('Attempting to call get_system_info...');
+                    const info = await window.__TAURI__.tauri.invoke('get_system_info');
+                    log('SUCCESS! System info: ' + JSON.stringify(info, null, 2));
+                } catch (e) {
+                    log('ERROR calling get_system_info: ' + e);
+                }
+            }
+        });
+    </script>
+</body>
+</html>

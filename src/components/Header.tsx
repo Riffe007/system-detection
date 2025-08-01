@@ -1,7 +1,6 @@
 import React from 'react';
 import { Activity, Pause, Play } from 'lucide-react';
 import { SystemInfo } from '../types';
-import { formatBytes } from '../utils/format';
 import { ThemeToggle } from './ThemeToggle';
 
 interface HeaderProps {
