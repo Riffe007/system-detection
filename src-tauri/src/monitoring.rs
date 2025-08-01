@@ -219,16 +219,31 @@ impl MonitoringService {
         };
         
         // Memory metrics
+        // sysinfo returns values in bytes, not KB
+        let total_memory_bytes = sys.total_memory();
+        let used_memory_bytes = sys.used_memory();
+        let available_memory_bytes = sys.available_memory();
+        let total_swap_bytes = sys.total_swap();
+        let used_swap_bytes = sys.used_swap();
+        
+        println!("Memory debug - Total: {} bytes ({:.1} GB), Used: {} bytes ({:.1} GB), Available: {} bytes ({:.1} GB)", 
+                 total_memory_bytes, total_memory_bytes as f64 / 1024.0 / 1024.0 / 1024.0,
+                 used_memory_bytes, used_memory_bytes as f64 / 1024.0 / 1024.0 / 1024.0,
+                 available_memory_bytes, available_memory_bytes as f64 / 1024.0 / 1024.0 / 1024.0);
+        println!("Swap debug - Total: {} bytes ({:.1} MB), Used: {} bytes ({:.1} MB)", 
+                 total_swap_bytes, total_swap_bytes as f64 / 1024.0 / 1024.0,
+                 used_swap_bytes, used_swap_bytes as f64 / 1024.0 / 1024.0);
+        
         let memory_metrics = MemoryMetrics {
-            total_bytes: sys.total_memory() * 1024,
-            used_bytes: sys.used_memory() * 1024,
-            available_bytes: sys.available_memory() * 1024,
+            total_bytes: total_memory_bytes,
+            used_bytes: used_memory_bytes,
+            available_bytes: available_memory_bytes,
             cached_bytes: 0, // Not available in sysinfo
-            swap_total_bytes: sys.total_swap() * 1024,
-            swap_used_bytes: sys.used_swap() * 1024,
-            usage_percent: (sys.used_memory() as f32 / sys.total_memory() as f32) * 100.0,
-            swap_usage_percent: if sys.total_swap() > 0 {
-                (sys.used_swap() as f32 / sys.total_swap() as f32) * 100.0
+            swap_total_bytes: total_swap_bytes,
+            swap_used_bytes: used_swap_bytes,
+            usage_percent: (used_memory_bytes as f32 / total_memory_bytes as f32) * 100.0,
+            swap_usage_percent: if total_swap_bytes > 0 {
+                (used_swap_bytes as f32 / total_swap_bytes as f32) * 100.0
             } else {
                 0.0
             },
@@ -277,7 +292,7 @@ impl MonitoringService {
                 pid: process.pid().as_u32(),
                 name: process.name().to_string(),
                 cpu_usage_percent: process.cpu_usage(),
-                memory_bytes: process.memory() * 1024,
+                memory_bytes: process.memory(), // sysinfo returns bytes for process memory
                 memory_percent: (process.memory() as f32 / sys.total_memory() as f32) * 100.0,
                 disk_read_bytes: 0, // Not available in sysinfo
                 disk_write_bytes: 0, // Not available in sysinfo
