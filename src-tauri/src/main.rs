@@ -19,6 +19,9 @@ async fn get_system_info(state: State<'_, ServiceState>) -> Result<SystemInfo, S
             println!("  Hostname: {}", info.hostname);
             println!("  OS: {} {}", info.os_name, info.os_version);
             println!("  CPU: {}", info.cpu_brand);
+            println!("  Architecture: {}", info.architecture);
+            println!("  CPU Cores: {}", info.cpu_cores);
+            println!("  Total Memory: {} MB", info.total_memory / 1024 / 1024);
             Ok(info)
         }
         Err(e) => {
@@ -30,18 +33,25 @@ async fn get_system_info(state: State<'_, ServiceState>) -> Result<SystemInfo, S
 
 #[tauri::command]
 async fn start_monitoring(state: State<'_, ServiceState>, app: tauri::AppHandle) -> Result<(), String> {
-    println!("start_monitoring called");
+    println!("=== start_monitoring called ===");
     let mut service = state.write().await;
     
     // Clone app handle for the callback
     let app_handle = app.clone();
+    println!("App handle cloned for metrics callback");
     
     // Set up the metrics callback to emit events to the frontend
     service.set_metrics_callback(move |metrics| {
-        let _ = app_handle.emit("system-metrics", &metrics);
+        println!("Emitting system-metrics event with {} processes", metrics.top_processes.len());
+        let result = app_handle.emit("system-metrics", &metrics);
+        if let Err(e) = result {
+            println!("Error emitting system-metrics event: {}", e);
+        }
     }).await;
     
+    println!("Starting monitoring service...");
     service.start_monitoring().await;
+    println!("Monitoring service started successfully");
     Ok(())
 }
 
@@ -53,14 +63,30 @@ async fn stop_monitoring(_state: State<'_, ServiceState>) -> Result<(), String> 
 
 #[tauri::command]
 async fn get_current_metrics(state: State<'_, ServiceState>) -> Result<SystemMetrics, String> {
+    println!("=== get_current_metrics called ===");
     let service = state.read().await;
-    service.collect_metrics()
-        .await
+    match service.collect_metrics().await {
+        Ok(metrics) => {
+            println!("Current metrics collected successfully with {} processes", metrics.top_processes.len());
+            println!("Returning metrics from get_current_metrics command");
+            Ok(metrics)
+        }
+        Err(e) => {
+            println!("ERROR collecting current metrics: {}", e);
+            Err(e)
+        }
+    }
 }
 
+
+
 fn main() {
+    println!("=== Starting System Monitor Tauri Application ===");
+    
     // Initialize the monitoring service
+    println!("Initializing monitoring service...");
     let service = Arc::new(RwLock::new(MonitoringService::new()));
+    println!("Monitoring service initialized successfully");
     
     tauri::Builder::default()
         .manage(service)

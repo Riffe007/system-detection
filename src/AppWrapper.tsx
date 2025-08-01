@@ -36,10 +36,10 @@ export default function AppWrapper() {
           console.error('Initialization timeout - setting loading to false');
           setLoading(false);
           setError('Initialization timed out. Please refresh the page.');
-        }, 10000); // 10 second timeout
+        }, 15000); // Increased to 15 seconds for Tauri v2
         
         // Wait a bit for Tauri to be available
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise(resolve => setTimeout(resolve, 1000));
         
         // Use our comprehensive Tauri detector
         const isTauri = await detectTauriEnvironment();
@@ -69,34 +69,105 @@ export default function AppWrapper() {
             throw new Error('Tauri listen not available');
           }
           
+          // Test basic connectivity by trying to get system info directly
+          console.log('Testing Tauri connectivity...');
+          
           // Load system info
           try {
+            console.log('Calling get_system_info...');
             const info = await invoke('get_system_info');
+            console.log('System info received:', info);
             setSystemInfo(info);
+            console.log('System info state updated');
           } catch (err) {
             console.error('Failed to load system info:', err);
             setError(`Failed to load system info: ${err}`);
+            return; // Don't continue if we can't get system info
           }
           
           // Start monitoring
           try {
+            console.log('Starting monitoring...');
             await invoke('start_monitoring');
             setIsMonitoring(true);
+            console.log('Monitoring started successfully');
+            console.log('Monitoring state updated');
           } catch (err) {
             console.error('Failed to start monitoring:', err);
             setError(`Failed to start monitoring: ${err}`);
+            return; // Don't continue if we can't start monitoring
           }
           
           // Listen for metrics updates
-          const unlisten = await listen('system-metrics', (event: any) => {
-            setMetrics(event.payload);
-          });
-          
-          // Cleanup
-          return () => {
-            unlisten();
-            invoke('stop_monitoring').catch(console.error);
-          };
+          try {
+            console.log('Setting up metrics listener...');
+            const unlisten = await listen('system-metrics', (event: any) => {
+              console.log('Received metrics update via event:', event);
+              console.log('Event payload:', event.payload);
+              setMetrics(event.payload);
+            });
+            console.log('Metrics listener set up successfully');
+            
+            // Set up a fallback polling mechanism in case events don't work
+            const pollInterval = setInterval(async () => {
+              try {
+                console.log('Polling for metrics...');
+                const currentMetrics = await invoke('get_current_metrics');
+                console.log('Polled metrics received:', currentMetrics);
+                setMetrics(currentMetrics);
+              } catch (err) {
+                console.error('Polling fallback failed:', err);
+                console.error('Error details:', err.message, err.stack);
+              }
+            }, 2000); // Poll every 2 seconds as fallback
+            
+            // Store cleanup function for later
+            const cleanup = () => {
+              console.log('Cleaning up metrics listener...');
+              clearInterval(pollInterval);
+              unlisten();
+              invoke('stop_monitoring').catch(console.error);
+            };
+            
+            // Clear the timeout since we completed successfully
+            clearTimeout(initTimeout);
+            setError(null); // Clear any previous errors
+            console.log('Initialization completed successfully');
+            
+            // Return cleanup function
+            return cleanup;
+          } catch (err) {
+            console.error('Failed to set up metrics listener:', err);
+            console.log('Continuing without event listener, will use polling fallback');
+            
+            // Set up polling as primary method if event listener fails
+            const pollInterval = setInterval(async () => {
+              try {
+                console.log('Polling for metrics (primary method)...');
+                const currentMetrics = await invoke('get_current_metrics');
+                console.log('Polled metrics received (primary):', currentMetrics);
+                setMetrics(currentMetrics);
+              } catch (err) {
+                console.error('Polling failed (primary):', err);
+                console.error('Error details:', err.message, err.stack);
+              }
+            }, 2000);
+            
+            // Store cleanup function for later
+            const cleanup = () => {
+              console.log('Cleaning up polling...');
+              clearInterval(pollInterval);
+              invoke('stop_monitoring').catch(console.error);
+            };
+            
+            // Clear the timeout since we completed successfully
+            clearTimeout(initTimeout);
+            setError(null); // Clear any previous errors
+            console.log('Initialization completed successfully');
+            
+            // Return cleanup function
+            return cleanup;
+          }
         } else {
           // Running in browser - use mock Tauri service
           console.log('Tauri not available, using mock service');
@@ -109,9 +180,9 @@ export default function AppWrapper() {
           console.log('Window object:', window);
           console.log('Tauri object details:', {
             hasTauri: !!window.__TAURI__,
-            hasTauriTauri: !!(window.__TAURI__ && window.__TAURI__.tauri),
+            hasTauriCore: !!(window.__TAURI__ && window.__TAURI__.core),
             hasTauriEvent: !!(window.__TAURI__ && window.__TAURI__.event),
-            invokeType: window.__TAURI__?.tauri?.invoke ? typeof window.__TAURI__.tauri.invoke : 'undefined'
+            invokeType: window.__TAURI__?.core?.invoke ? typeof window.__TAURI__.core.invoke : 'undefined'
           });
           
           // Load system info
@@ -137,20 +208,27 @@ export default function AppWrapper() {
             setMetrics(event.payload);
           });
           
-          // Cleanup
-          return () => {
+          // Store cleanup function for later
+          const cleanup = () => {
             unlisten();
             mockTauri.invoke('stop_monitoring').catch(console.error);
           };
+          
+          // Clear the timeout since we completed successfully
+          clearTimeout(initTimeout);
+          setError(null); // Clear any previous errors
+          console.log('Initialization completed successfully');
+          
+          // Return cleanup function
+          return cleanup;
         }
-        // Clear the timeout if we complete successfully
-        clearTimeout(initTimeout);
       } catch (err) {
         console.error('Initialization error:', err);
         setError(`Initialization error: ${err}`);
       } finally {
         console.log('Setting loading to false');
         setLoading(false);
+        console.log('Loading state set to false');
       }
     };
     
@@ -189,7 +267,10 @@ export default function AppWrapper() {
     }
   };
 
+  console.log('AppWrapper render - loading:', loading, 'systemInfo:', !!systemInfo, 'error:', error);
+  
   if (loading) {
+    console.log('Rendering loading state');
     return (
       <div className="min-h-screen bg-gray-900 flex items-center justify-center">
         <div className="text-center">
@@ -200,6 +281,7 @@ export default function AppWrapper() {
     );
   }
 
+  console.log('Rendering main app');
   return (
     <ThemeProvider>
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 transition-colors duration-200">

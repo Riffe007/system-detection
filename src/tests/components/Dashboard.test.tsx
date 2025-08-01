@@ -13,11 +13,11 @@ const mockSystemInfo: SystemInfo = {
   cpu_cores: 4,
   cpu_threads: 8,
   total_memory: 16 * 1024 * 1024 * 1024,
-  boot_time: new Date().toISOString(),
+  boot_time: Math.floor(Date.now() / 1000),
 };
 
 const mockMetrics: SystemMetrics = {
-  timestamp: new Date().toISOString(),
+  timestamp: Math.floor(Date.now() / 1000).toString(),
   system_info: mockSystemInfo,
   cpu: {
     usage_percent: 45.5,
@@ -83,7 +83,7 @@ const mockMetrics: SystemMetrics = {
       disk_write_bytes: 0,
       status: 'Running',
       threads: 10,
-      start_time: new Date().toISOString(),
+      start_time: Math.floor(Date.now() / 1000).toString(),
     },
   ],
 };

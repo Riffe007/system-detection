@@ -7,6 +7,7 @@ export async function detectTauriEnvironment(): Promise<boolean> {
   if (typeof window !== 'undefined' && window.__TAURI__) {
     console.log('✓ window.__TAURI__ found');
     console.log('  Available APIs:', Object.keys(window.__TAURI__));
+    console.log('  Full __TAURI__ object:', window.__TAURI__);
     
     // In Tauri v2, the structure is window.__TAURI__.core.invoke
     if (window.__TAURI__.core && typeof window.__TAURI__.core.invoke === 'function') {
@@ -17,6 +18,12 @@ export async function detectTauriEnvironment(): Promise<boolean> {
     // Legacy structure check
     if (window.__TAURI__.tauri && typeof window.__TAURI__.tauri.invoke === 'function') {
       console.log('✓ Legacy Tauri invoke found');
+      return true;
+    }
+    
+    // Additional Tauri v2 checks
+    if (window.__TAURI__.event && typeof window.__TAURI__.event.listen === 'function') {
+      console.log('✓ Tauri v2 event.listen found');
       return true;
     }
   }
@@ -50,11 +57,32 @@ export async function detectTauriEnvironment(): Promise<boolean> {
     }
   }
   
+  // Method 5: Check for Tauri v2 specific patterns
+  if (typeof window !== 'undefined' && window.__TAURI__) {
+    // Check if we have any of the core Tauri v2 APIs
+    const hasCore = window.__TAURI__.core;
+    const hasEvent = window.__TAURI__.event;
+    const hasWindow = window.__TAURI__.window;
+    const hasApp = window.__TAURI__.app;
+    
+    if (hasCore || hasEvent || hasWindow || hasApp) {
+      console.log('✓ Method 5: Tauri v2 APIs detected');
+      console.log('  Core:', !!hasCore);
+      console.log('  Event:', !!hasEvent);
+      console.log('  Window:', !!hasWindow);
+      console.log('  App:', !!hasApp);
+      return true;
+    }
+  }
+  
   console.log('✗ No Tauri environment detected');
   return false;
 }
 
 export async function getTauriInvoke() {
+  console.log('=== getTauriInvoke called ===');
+  console.log('window.__TAURI__:', window.__TAURI__);
+  
   // Try Tauri v2 structure first
   if (window.__TAURI__?.core?.invoke) {
     console.log('Using Tauri v2 core.invoke');
@@ -79,10 +107,19 @@ export async function getTauriInvoke() {
 }
 
 export async function getTauriListen() {
+  console.log('=== getTauriListen called ===');
+  console.log('window.__TAURI__:', window.__TAURI__);
+  
   // Try Tauri v2 structure
   if (window.__TAURI__?.event?.listen) {
     console.log('Using Tauri v2 event.listen');
     return window.__TAURI__.event.listen;
+  }
+  
+  // Try Tauri v2 core structure
+  if (window.__TAURI__?.core?.listen) {
+    console.log('Using Tauri v2 core.listen');
+    return window.__TAURI__.core.listen;
   }
   
   // Try import
