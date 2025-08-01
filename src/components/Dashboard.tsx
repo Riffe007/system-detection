@@ -1,6 +1,6 @@
 import React from 'react';
 import { SystemInfo, SystemMetrics } from '../types';
-import { DraggableDashboard } from './DraggableDashboard';
+import { TabbedDashboard } from './TabbedDashboard';
 
 interface DashboardProps {
   systemInfo: SystemInfo | null;
@@ -8,5 +8,5 @@ interface DashboardProps {
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({ systemInfo, metrics }) => {
-  return <DraggableDashboard systemInfo={systemInfo} metrics={metrics} />;
+  return <TabbedDashboard systemInfo={systemInfo} metrics={metrics} />;
 };

@@ -117,7 +117,7 @@ export default function AppWrapper() {
                 setMetrics(currentMetrics);
               } catch (err) {
                 console.error('Polling fallback failed:', err);
-                console.error('Error details:', err.message, err.stack);
+                console.error('Error details:', (err as Error).message, (err as Error).stack);
               }
             }, 2000); // Poll every 2 seconds as fallback
             
@@ -149,7 +149,7 @@ export default function AppWrapper() {
                 setMetrics(currentMetrics);
               } catch (err) {
                 console.error('Polling failed (primary):', err);
-                console.error('Error details:', err.message, err.stack);
+                console.error('Error details:', (err as Error).message, (err as Error).stack);
               }
             }, 2000);
             

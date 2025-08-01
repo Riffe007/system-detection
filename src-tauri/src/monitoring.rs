@@ -3,6 +3,9 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use sysinfo::{System, Disks, Networks, ProcessStatus};
 
+use system_monitor::security::{SecurityMonitor, SecurityMetrics};
+use system_monitor::optimization::{OptimizationMonitor, OptimizationMetrics};
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SystemInfo {
     pub hostname: String,
@@ -117,6 +120,8 @@ pub struct SystemMetrics {
 pub struct MonitoringService {
     system: Arc<RwLock<System>>,
     metrics_callback: Arc<RwLock<Option<Box<dyn Fn(SystemMetrics) + Send + Sync>>>>,
+    pub security_monitor: SecurityMonitor,
+    pub optimization_monitor: OptimizationMonitor,
 }
 
 impl MonitoringService {
@@ -124,6 +129,8 @@ impl MonitoringService {
         Self {
             system: Arc::new(RwLock::new(System::new_all())),
             metrics_callback: Arc::new(RwLock::new(None)),
+            security_monitor: SecurityMonitor::new(),
+            optimization_monitor: OptimizationMonitor::new(),
         }
     }
 
@@ -341,6 +348,8 @@ impl MonitoringService {
                 let service = MonitoringService {
                     system: system.clone(),
                     metrics_callback: callback.clone(),
+                    security_monitor: SecurityMonitor::new(),
+                    optimization_monitor: OptimizationMonitor::new(),
                 };
                 
                 match service.collect_metrics().await {

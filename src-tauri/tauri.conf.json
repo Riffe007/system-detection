@@ -4,8 +4,8 @@
   "version": "0.1.0",
   "identifier": "com.systemmonitor.app",
   "build": {
-    "beforeDevCommand": "npm run dev",
-    "beforeBuildCommand": "npm run build",
+    "beforeDevCommand": "pnpm run dev",
+    "beforeBuildCommand": "pnpm run build",
     "devUrl": "http://localhost:5173",
     "frontendDist": "../dist"
   },
@@ -20,7 +20,8 @@
         "fullscreen": false,
         "alwaysOnTop": false,
         "decorations": true,
-        "transparent": false
+        "transparent": false,
+        "devtools": false
       }
     ],
     "security": {

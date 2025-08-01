@@ -1,1 +1,3 @@
-// Tauri lib.rs - empty for now
+// Tauri lib.rs - module declarations
+pub mod security;
+pub mod optimization;
