@@ -86,6 +86,12 @@ const mockMetrics: SystemMetrics = {
       start_time: Math.floor(Date.now() / 1000).toString(),
     },
   ],
+  dpus: [],
+  npus: [],
+  external_ddr: [],
+  fpgas: [],
+  asics: [],
+  quantum_processors: [],
 };
 
 describe('Dashboard', () => {

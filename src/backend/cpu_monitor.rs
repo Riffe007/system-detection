@@ -87,7 +87,7 @@ impl CpuMonitor {
 
         Ok(CpuMetrics {
             usage_percent: global_cpu.cpu_usage(),
-            frequency_mhz: global_cpu.frequency(),
+            frequency_mhz: global_cpu.frequency() / 1_000_000, // Convert from Hz to MHz
             temperature_celsius,
             load_average,
             per_core_usage,

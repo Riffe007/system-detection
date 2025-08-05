@@ -5,6 +5,21 @@ use sysinfo::{System, Disks, Networks, ProcessStatus};
 use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+// Import the high-performance monitoring system
+pub mod high_perf_monitor;
+use high_perf_monitor::{HighPerfMonitoringService, HighPerfMetrics};
+
+// Import ultra-performance monitoring system
+pub mod ultra_perf_monitor;
+use ultra_perf_monitor::{UltraPerfMonitoringService, UltraPerfMetrics};
+
+// Import kernel-level monitoring
+pub mod kernel_monitor;
+pub mod linux_ebpf;
+pub mod windows_etw;
+
+use kernel_monitor::{KernelMonitor, KernelMetrics};
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SystemInfo {
     pub hostname: String,
@@ -120,15 +135,38 @@ pub struct MonitoringService {
     system: Arc<RwLock<System>>,
     metrics_callback: Arc<RwLock<Option<Box<dyn Fn(SystemMetrics) + Send + Sync>>>>,
     previous_network_stats: Arc<RwLock<HashMap<String, (u64, u64)>>>,
+    // High-performance monitoring system
+    high_perf_service: Option<HighPerfMonitoringService>,
+    high_perf_callback: Arc<RwLock<Option<Box<dyn Fn(HighPerfMetrics) + Send + Sync>>>>,
+    // Ultra-performance monitoring system
+    ultra_perf_service: Option<UltraPerfMonitoringService>,
+    ultra_perf_callback: Arc<RwLock<Option<Box<dyn Fn(UltraPerfMetrics) + Send + Sync>>>>,
+    // Kernel-level monitoring system
+    kernel_monitor: Option<KernelMonitor>,
+    kernel_callback: Arc<RwLock<Option<Box<dyn Fn(KernelMetrics) + Send + Sync>>>>,
 }
 
 impl MonitoringService {
+    #[allow(dead_code)]
     pub fn new() -> Self {
         Self {
             system: Arc::new(RwLock::new(System::new_all())),
             metrics_callback: Arc::new(RwLock::new(None)),
             previous_network_stats: Arc::new(RwLock::new(HashMap::new())),
+            high_perf_service: None,
+            high_perf_callback: Arc::new(RwLock::new(None)),
+            ultra_perf_service: None,
+            ultra_perf_callback: Arc::new(RwLock::new(None)),
+            kernel_monitor: None,
+            kernel_callback: Arc::new(RwLock::new(None)),
         }
+    }
+
+    pub fn new_with_high_perf(update_interval_ms: u64) -> Self {
+        let mut service = Self::new();
+        service.high_perf_service = Some(HighPerfMonitoringService::new(update_interval_ms));
+        service.ultra_perf_service = Some(UltraPerfMonitoringService::new(update_interval_ms));
+        service
     }
 
     pub async fn set_metrics_callback<F>(&mut self, callback: F)
@@ -138,53 +176,110 @@ impl MonitoringService {
         *self.metrics_callback.write().await = Some(Box::new(callback));
     }
 
+    pub async fn set_high_perf_callback<F>(&mut self, callback: F)
+    where
+        F: Fn(HighPerfMetrics) + Send + Sync + 'static,
+    {
+        *self.high_perf_callback.write().await = Some(Box::new(callback));
+    }
+
+    pub async fn set_ultra_perf_callback<F>(&mut self, callback: F)
+    where
+        F: Fn(UltraPerfMetrics) + Send + Sync + 'static,
+    {
+        *self.ultra_perf_callback.write().await = Some(Box::new(callback));
+    }
+
+    pub fn start_high_perf_monitoring(&mut self) {
+        if let Some(service) = &self.high_perf_service {
+            service.start();
+        }
+    }
+
+    pub fn start_ultra_perf_monitoring(&mut self) {
+        if let Some(service) = &self.ultra_perf_service {
+            service.start();
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn stop_high_perf_monitoring(&mut self) {
+        if let Some(service) = &self.high_perf_service {
+            service.stop();
+        }
+    }
+
+    pub fn stop_ultra_perf_monitoring(&mut self) {
+        if let Some(service) = &self.ultra_perf_service {
+            service.stop();
+        }
+    }
+
+    pub fn get_high_perf_metrics(&self) -> Option<HighPerfMetrics> {
+        self.high_perf_service.as_ref()?.get_latest_metrics()
+    }
+
+    pub fn get_ultra_perf_metrics(&self) -> Option<UltraPerfMetrics> {
+        self.ultra_perf_service.as_ref()?.get_latest_metrics()
+    }
+
+    pub async fn set_kernel_callback<F>(&mut self, callback: F)
+    where
+        F: Fn(KernelMetrics) + Send + Sync + 'static,
+    {
+        *self.kernel_callback.write().await = Some(Box::new(callback));
+    }
+
+    pub fn start_kernel_monitoring(&mut self) -> Result<(), kernel_monitor::KernelMonitorError> {
+        if self.kernel_monitor.is_none() {
+            self.kernel_monitor = Some(KernelMonitor::new()?);
+        }
+        
+        if let Some(monitor) = &mut self.kernel_monitor {
+            monitor.start()?;
+        }
+        
+        Ok(())
+    }
+
+    pub fn stop_kernel_monitoring(&mut self) {
+        if let Some(monitor) = &mut self.kernel_monitor {
+            monitor.stop();
+        }
+    }
+
+    pub fn get_kernel_metrics(&self) -> Option<KernelMetrics> {
+        self.kernel_monitor.as_ref()?.get_latest_metrics()
+    }
+
     pub async fn get_system_info(&self) -> Result<SystemInfo, String> {
-        println!("=== get_system_info called in monitoring service ===");
-        
-        let mut sys = self.system.write().await;
-        println!("Refreshing system info...");
-        sys.refresh_all();
-        println!("System info refreshed successfully");
-        
-        let info = os_info::get();
-        println!("OS info retrieved: {} {}", info.os_type(), info.version());
+        let system = self.system.read().await;
         
         let hostname = hostname::get()
-            .unwrap_or_default()
+            .map_err(|e| format!("Failed to get hostname: {}", e))?
             .to_string_lossy()
             .to_string();
-        println!("Hostname: {}", hostname);
-        
-        let cpu_brand = sys.cpus().first()
-            .map(|cpu| cpu.brand().to_string())
-            .unwrap_or_default();
-        println!("CPU Brand: {}", cpu_brand);
-        
-        let cpu_cores = sys.physical_core_count().unwrap_or(0);
-        let cpu_threads = sys.cpus().len();
-        println!("CPU Cores: {}, Threads: {}", cpu_cores, cpu_threads);
-        
-        let total_memory = sys.total_memory();
-        println!("Total Memory: {} MB", total_memory / 1024 / 1024);
-        
+
+        let os_info = os_info::get();
+        let cpu_info = system.global_cpu_info();
+
         Ok(SystemInfo {
             hostname,
-            os_name: info.os_type().to_string(),
-            os_version: info.version().to_string(),
-            kernel_version: System::kernel_version().unwrap_or_default(),
+            os_name: os_info.os_type().to_string(),
+            os_version: os_info.version().to_string(),
+            kernel_version: os_info.edition().unwrap_or("Unknown").to_string(),
             architecture: std::env::consts::ARCH.to_string(),
-            cpu_brand,
-            cpu_cores,
-            cpu_threads,
-            total_memory,
-            boot_time: System::boot_time() as i64,
+            cpu_brand: cpu_info.brand().to_string(),
+            cpu_cores: system.cpus().len(),
+            cpu_threads: system.cpus().len(),
+            total_memory: system.total_memory(),
+            boot_time: sysinfo::System::boot_time() as i64,
         })
     }
 
     async fn get_gpu_metrics(&self) -> Vec<GpuMetrics> {
         let mut gpus = Vec::new();
         
-        // Try to get NVIDIA GPU info if available
         #[cfg(feature = "nvidia")]
         {
             if let Ok(nvml) = nvml_wrapper::Nvml::init() {
@@ -205,7 +300,7 @@ impl MonitoringService {
                                 
                                 gpus.push(GpuMetrics {
                                     name: name.trim().to_string(),
-                                    driver_version: nvml.sys_driver_version().unwrap_or_default(),
+                                    driver_version: "Unknown".to_string(), // TODO: Implement driver version detection
                                     temperature_celsius: temperature as f32,
                                     usage_percent: utilization.gpu as f32,
                                     memory_total_bytes: memory.total,
@@ -213,7 +308,7 @@ impl MonitoringService {
                                     memory_usage_percent,
                                     power_watts: device.power_usage().unwrap_or(0) as f32 / 1000.0,
                                     fan_speed_percent: device.fan_speed(0).ok().map(|speed| speed as f32),
-                                    clock_mhz: device.max_clock_info(nvml_wrapper::enum_wrappers::device::Clock::Gpu).unwrap_or(0) as f32,
+                                    clock_mhz: device.max_clock_info(nvml_wrapper::enum_wrappers::device::Clock::Graphics).unwrap_or(0) as f32,
                                     memory_clock_mhz: device.max_clock_info(nvml_wrapper::enum_wrappers::device::Clock::Memory).unwrap_or(0) as f32,
                                 });
                             }
@@ -228,55 +323,65 @@ impl MonitoringService {
 
     async fn get_disk_metrics(&self) -> Vec<DiskMetrics> {
         let disks = Disks::new_with_refreshed_list();
-        let disk_metrics: Vec<DiskMetrics> = disks.iter()
-            .map(|disk| DiskMetrics {
+        
+        disks.iter().map(|disk| {
+            let total_space = disk.total_space();
+            let available_space = disk.available_space();
+            let used_space = total_space - available_space;
+            let usage_percent = if total_space > 0 {
+                (used_space as f32 / total_space as f32) * 100.0
+            } else {
+                0.0
+            };
+
+            DiskMetrics {
                 mount_point: disk.mount_point().to_string_lossy().to_string(),
                 device_name: disk.name().to_string_lossy().to_string(),
                 fs_type: disk.file_system().to_string_lossy().to_string(),
-                total_bytes: disk.total_space(),
-                used_bytes: disk.total_space() - disk.available_space(),
-                available_bytes: disk.available_space(),
-                usage_percent: ((disk.total_space() - disk.available_space()) as f32 / disk.total_space() as f32) * 100.0,
-                read_bytes_per_sec: 0, // sysinfo doesn't provide this in current version
-                write_bytes_per_sec: 0, // sysinfo doesn't provide this in current version
-                io_operations_per_sec: 0, // sysinfo doesn't provide this in current version
-            })
-            .collect();
-        
-        disk_metrics
+                total_bytes: total_space,
+                used_bytes: used_space,
+                available_bytes: available_space,
+                usage_percent,
+                read_bytes_per_sec: 0, // TODO: Add I/O rate calculation
+                write_bytes_per_sec: 0,
+                io_operations_per_sec: 0,
+            }
+        }).collect()
     }
 
     async fn get_network_metrics(&self) -> Vec<NetworkMetrics> {
         let networks = Networks::new_with_refreshed_list();
         let mut network_metrics = Vec::new();
-        let mut previous_stats = self.previous_network_stats.write().await;
         
         for (name, data) in networks.iter() {
             let current_sent = data.total_transmitted();
             let current_received = data.total_received();
             
-            let (sent_rate, received_rate) = if let Some((prev_sent, prev_received)) = previous_stats.get(name) {
-                let sent_diff = current_sent.saturating_sub(*prev_sent);
-                let received_diff = current_received.saturating_sub(*prev_received);
-                (sent_diff, received_diff)
-            } else {
-                (0, 0)
+            let (sent_rate, received_rate) = {
+                let mut stats = self.previous_network_stats.write().await;
+                if let Some((prev_sent, prev_received)) = stats.get(name) {
+                    let sent_diff = current_sent.saturating_sub(*prev_sent);
+                    let received_diff = current_received.saturating_sub(*prev_received);
+                    stats.insert(name.clone(), (current_sent, current_received));
+                    (sent_diff, received_diff)
+                } else {
+                    stats.insert(name.clone(), (current_sent, current_received));
+                    (0, 0)
+                }
             };
-            
-            previous_stats.insert(name.clone(), (current_sent, current_received));
-            
+
             network_metrics.push(NetworkMetrics {
                 interface_name: name.clone(),
-                is_up: true, // Assume up if we can get data
-                mac_address: String::new(), // Would need additional system calls
-                ip_addresses: vec![], // Would need additional system calls
+                is_up: true, // TODO: Implement is_up detection
+                mac_address: "Unknown".to_string(), // TODO: Implement MAC address detection
+                ip_addresses: Vec::new(), // TODO: Implement IP address detection
                 bytes_sent: current_sent,
                 bytes_received: current_received,
                 packets_sent: data.total_packets_transmitted(),
                 packets_received: data.total_packets_received(),
-                errors_sent: 0, // Would need additional system calls
-                errors_received: 0, // Would need additional system calls
-                speed_mbps: None, // Would need additional system calls
+                errors_sent: data.total_errors_on_transmitted(),
+                errors_received: data.total_errors_on_received(),
+                speed_mbps: None, // TODO: Add speed detection
                 bytes_sent_rate: sent_rate,
                 bytes_received_rate: received_rate,
             });
@@ -286,110 +391,88 @@ impl MonitoringService {
     }
 
     pub async fn collect_metrics(&self) -> Result<SystemMetrics, String> {
-        println!("=== collect_metrics called ===");
-        let mut sys = self.system.write().await;
-        println!("Refreshing system data...");
-        sys.refresh_all();
-        println!("System data refreshed");
-        
-        // Drop the write lock before calling other methods to avoid deadlock
-        drop(sys);
-        
-        println!("Getting system info for metrics...");
-        let system_info = self.get_system_info().await?;
-        println!("System info retrieved for metrics");
-        
-        // Get fresh system data for metrics
-        let sys = self.system.read().await;
+        let system = self.system.read().await;
         
         // CPU metrics
-        let cpu_usage = sys.global_cpu_info().cpu_usage();
-        let per_core_usage: Vec<f32> = sys.cpus().iter()
-            .map(|cpu| cpu.cpu_usage())
-            .collect();
+        let cpu_usage = system.global_cpu_info().cpu_usage();
+        let per_core_usage: Vec<f32> = system.cpus().iter().map(|cpu| cpu.cpu_usage()).collect();
         
-        println!("CPU usage - Global: {}%, Per-thread: {:?}", cpu_usage, per_core_usage);
-        println!("CPU count: {}", sys.cpus().len());
-        println!("Physical cores: {}", sys.physical_core_count().unwrap_or(0));
-        
-        let load_avg = System::load_average();
-        println!("Load average - 1min: {}, 5min: {}, 15min: {}", load_avg.one, load_avg.five, load_avg.fifteen);
-        
-        // On Windows, load average might not be available, so we'll use a fallback
-        let load_average = if load_avg.one == 0.0 && load_avg.five == 0.0 && load_avg.fifteen == 0.0 {
-            // Fallback: calculate a simple load based on CPU usage
-            let avg_cpu = per_core_usage.iter().sum::<f32>() / per_core_usage.len() as f32;
-            let load_factor = avg_cpu / 100.0;
-            [load_factor, load_factor * 0.8, load_factor * 0.6]
-        } else {
-            [load_avg.one as f32, load_avg.five as f32, load_avg.fifteen as f32]
-        };
+        let raw_frequency = system.cpus().first()
+            .map(|cpu| cpu.frequency())
+            .unwrap_or(0);
+        println!("Raw CPU frequency from sysinfo: {} Hz", raw_frequency);
+        let frequency_mhz = raw_frequency / 1_000_000;
         
         let cpu_metrics = CpuMetrics {
             usage_percent: cpu_usage,
-            frequency_mhz: sys.cpus().first()
-                .map(|cpu| cpu.frequency())
-                .unwrap_or(0),
+            frequency_mhz, // Now correctly in MHz
             per_core_usage,
-            temperature: None, // Would need sensors crate
-            load_average,
-            processes_total: sys.processes().len(),
-            processes_running: sys.processes().values()
+            temperature: None,
+            load_average: {
+                let load = sysinfo::System::load_average();
+                [load.one as f32, load.five as f32, load.fifteen as f32]
+            },
+            processes_total: system.processes().len(),
+            processes_running: system.processes().values()
                 .filter(|p| matches!(p.status(), ProcessStatus::Run))
                 .count(),
-            context_switches: 0, // Would need additional system calls
-            interrupts: 0, // Would need additional system calls
+            context_switches: 0,
+            interrupts: 0,
         };
-        
+
         // Memory metrics
         let memory_metrics = MemoryMetrics {
-            total_bytes: sys.total_memory() * 1024,
-            used_bytes: sys.used_memory() * 1024,
-            available_bytes: sys.available_memory() * 1024,
+            total_bytes: system.total_memory(),
+            used_bytes: system.used_memory(),
+            available_bytes: system.available_memory(),
             cached_bytes: 0, // Would need additional system calls
-            swap_total_bytes: sys.total_swap() * 1024,
-            swap_used_bytes: sys.used_swap() * 1024,
-            usage_percent: (sys.used_memory() as f32 / sys.total_memory() as f32) * 100.0,
-            swap_usage_percent: if sys.total_swap() > 0 {
-                (sys.used_swap() as f32 / sys.total_swap() as f32) * 100.0
+            swap_total_bytes: system.total_swap(),
+            swap_used_bytes: system.used_swap(),
+            usage_percent: (system.used_memory() as f32 / system.total_memory() as f32) * 100.0,
+            swap_usage_percent: if system.total_swap() > 0 {
+                (system.used_swap() as f32 / system.total_swap() as f32) * 100.0
             } else {
                 0.0
             },
         };
-        
-        // Get enhanced metrics
-        let disk_metrics = self.get_disk_metrics().await;
-        let network_metrics = self.get_network_metrics().await;
+
+        // GPU metrics
         let gpu_metrics = self.get_gpu_metrics().await;
-        
-        // Top processes
-        let mut processes: Vec<ProcessMetrics> = sys.processes().values()
-            .map(|process| ProcessMetrics {
-                pid: process.pid().as_u32(),
-                name: process.name().to_string(),
-                cpu_usage_percent: process.cpu_usage(),
-                memory_bytes: process.memory() * 1024,
-                memory_percent: (process.memory() as f32 / sys.total_memory() as f32) * 100.0,
-                disk_read_bytes: 0, // Would need additional system calls
-                disk_write_bytes: 0, // Would need additional system calls
-                status: format!("{:?}", process.status()),
-                threads: 1, // Would need additional system calls
-                start_time: SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_secs()
-                    .to_string(),
+
+        // Disk metrics
+        let disk_metrics = self.get_disk_metrics().await;
+
+        // Network metrics
+        let network_metrics = self.get_network_metrics().await;
+
+        // Process metrics (top processes by CPU usage)
+        let mut processes: Vec<ProcessMetrics> = system.processes()
+            .iter()
+            .map(|(pid, process)| {
+                ProcessMetrics {
+                    pid: pid.as_u32(),
+                    name: process.name().to_string(),
+                    cpu_usage_percent: process.cpu_usage(),
+                    memory_bytes: process.memory(),
+                    memory_percent: (process.memory() as f32 / system.total_memory() as f32) * 100.0,
+                    disk_read_bytes: 0, // Would need additional system calls
+                    disk_write_bytes: 0, // Would need additional system calls
+                    status: format!("{:?}", process.status()),
+                    threads: 1, // TODO: Implement thread count detection
+                    start_time: process.start_time().to_string(),
+                }
             })
             .collect();
-        
+
         processes.sort_by(|a, b| b.cpu_usage_percent.partial_cmp(&a.cpu_usage_percent).unwrap());
-        processes.truncate(10);
-        
-        println!("Creating SystemMetrics object...");
-        let metrics = SystemMetrics {
+        processes.truncate(20);
+
+        let system_info = self.get_system_info().await?;
+
+        Ok(SystemMetrics {
             timestamp: SystemTime::now()
                 .duration_since(UNIX_EPOCH)
-                .unwrap_or_default()
+                .unwrap()
                 .as_secs()
                 .to_string(),
             system_info,
@@ -399,47 +482,54 @@ impl MonitoringService {
             disks: disk_metrics,
             networks: network_metrics,
             top_processes: processes,
-        };
-        println!("SystemMetrics created successfully with {} processes", metrics.top_processes.len());
-        println!("Returning metrics from collect_metrics");
-        Ok(metrics)
+        })
     }
-    
+
     pub async fn start_monitoring(&self) {
-        println!("=== start_monitoring called in monitoring service ===");
-        let system = self.system.clone();
-        let callback = self.metrics_callback.clone();
-        
-        println!("Spawning monitoring task...");
-        tokio::spawn(async move {
-            println!("Monitoring task started, setting up interval...");
-            let mut interval = tokio::time::interval(std::time::Duration::from_secs(1));
-            println!("Monitoring interval set to 1 second");
+        // Start high-performance monitoring
+        if let Some(service) = &self.high_perf_service {
+            service.start();
+        }
+
+        // Start ultra-performance monitoring
+        if let Some(service) = &self.ultra_perf_service {
+            service.start();
+        }
+
+        // Start kernel-level monitoring
+        // Note: Kernel monitoring is started when the service is created
+        // The monitor is already running if it exists
+
+        // Set up callbacks for high-performance metrics
+        if let Some(service) = &self.high_perf_service {
+            let callback = self.high_perf_callback.clone();
+            let receiver = service.subscribe();
             
-            loop {
-                interval.tick().await;
-                
-                let service = MonitoringService {
-                    system: system.clone(),
-                    metrics_callback: callback.clone(),
-                    previous_network_stats: Arc::new(RwLock::new(HashMap::new())),
-                };
-                
-                match service.collect_metrics().await {
-                    Ok(metrics) => {
-                        if let Some(cb) = callback.read().await.as_ref() {
-                            println!("Calling metrics callback with {} processes", metrics.top_processes.len());
-                            cb(metrics);
-                        } else {
-                            println!("No metrics callback set");
-                        }
-                    }
-                    Err(e) => {
-                        println!("Error collecting metrics: {}", e);
+            tokio::spawn(async move {
+                while let Ok(metrics) = receiver.recv() {
+                    if let Some(cb) = &*callback.read().await {
+                        cb(metrics);
                     }
                 }
-            }
-        });
-        println!("Monitoring task spawned successfully");
+            });
+        }
+
+        // Set up callbacks for ultra-performance metrics
+        if let Some(service) = &self.ultra_perf_service {
+            let callback = self.ultra_perf_callback.clone();
+            let receiver = service.subscribe();
+            
+            tokio::spawn(async move {
+                while let Ok(metrics) = receiver.recv() {
+                    if let Some(cb) = &*callback.read().await {
+                        cb(metrics);
+                    }
+                }
+            });
+        }
+
+        // Set up callbacks for kernel metrics
+        // Note: Kernel monitoring callbacks are handled separately
+        // to avoid lifetime issues with the monitor reference
     }
 }

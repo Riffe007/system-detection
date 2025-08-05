@@ -9,6 +9,11 @@ import { DiskMonitor } from './monitors/DiskMonitor';
 import { NetworkMonitor } from './monitors/NetworkMonitor';
 import { ProcessList } from './monitors/ProcessList';
 import { GpuMonitor } from './monitors/GpuMonitor';
+import KernelMonitor from './monitors/KernelMonitor';
+import DpuMonitor from './monitors/DpuMonitor';
+import NpuMonitor from './monitors/NpuMonitor';
+import FpgaMonitor from './monitors/FpgaMonitor';
+import QuantumProcessorMonitor from './monitors/QuantumProcessorMonitor';
 import { SystemOverview } from './SystemOverview';
 import { GripVertical, Settings } from 'lucide-react';
 
@@ -77,6 +82,14 @@ export const DraggableDashboard: React.FC<DraggableDashboardProps> = ({ systemIn
         visible: true
       },
       {
+        id: 'kernel',
+        title: 'Kernel Monitor',
+        component: KernelMonitor,
+        props: {},
+        size: 'large',
+        visible: true
+      },
+      {
         id: 'disk',
         title: 'Disk Monitor',
         component: DiskMonitor,
@@ -98,6 +111,38 @@ export const DraggableDashboard: React.FC<DraggableDashboardProps> = ({ systemIn
         component: ProcessList,
         props: { processes: metrics?.top_processes },
         size: 'full',
+        visible: true
+      },
+      {
+        id: 'dpu',
+        title: 'DPU Monitor',
+        component: DpuMonitor,
+        props: { dpus: metrics?.dpus || [] },
+        size: 'medium',
+        visible: true
+      },
+      {
+        id: 'npu',
+        title: 'NPU Monitor',
+        component: NpuMonitor,
+        props: { npus: metrics?.npus || [] },
+        size: 'medium',
+        visible: true
+      },
+      {
+        id: 'fpga',
+        title: 'FPGA Monitor',
+        component: FpgaMonitor,
+        props: { fpgas: metrics?.fpgas || [] },
+        size: 'medium',
+        visible: true
+      },
+      {
+        id: 'quantum',
+        title: 'Quantum Processor Monitor',
+        component: QuantumProcessorMonitor,
+        props: { quantumProcessors: metrics?.quantum_processors || [] },
+        size: 'medium',
         visible: true
       }
     ];
@@ -165,12 +210,22 @@ export const DraggableDashboard: React.FC<DraggableDashboardProps> = ({ systemIn
         return { ...widget, props: { metrics: metrics?.memory } };
       case 'gpu':
         return { ...widget, props: { gpus: metrics?.gpus } };
+      case 'kernel':
+        return { ...widget, props: {} };
       case 'disk':
         return { ...widget, props: { disks: metrics?.disks } };
       case 'network':
         return { ...widget, props: { networks: metrics?.networks } };
       case 'processes':
         return { ...widget, props: { processes: metrics?.top_processes } };
+      case 'dpu':
+        return { ...widget, props: { dpus: metrics?.dpus || [] } };
+      case 'npu':
+        return { ...widget, props: { npus: metrics?.npus || [] } };
+      case 'fpga':
+        return { ...widget, props: { fpgas: metrics?.fpgas || [] } };
+      case 'quantum':
+        return { ...widget, props: { quantumProcessors: metrics?.quantum_processors || [] } };
       default:
         return widget;
     }

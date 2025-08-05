@@ -33,7 +33,7 @@ export const GpuMonitor: React.FC<GpuMonitorProps> = ({ gpus }) => {
   }
 
   const primaryGpu = gpus[0];
-  const gpuData = gpus.map((gpu, index) => ({
+  const gpuData = gpus.map((gpu) => ({
     name: gpu.name,
     usage: gpu.usage_percent,
     memory: gpu.memory_usage_percent,

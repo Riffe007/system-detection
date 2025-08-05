@@ -4,7 +4,7 @@ echo    System Monitor - Windows Launcher
 echo ========================================
 echo.
 
-REM Check if we're in the right directory
+REM Check if we're in the correct directory
 if not exist "package.json" (
     echo Error: package.json not found.
     echo Please run this script from the project root directory.
@@ -12,32 +12,27 @@ if not exist "package.json" (
     exit /b 1
 )
 
-REM Check if pnpm is available
-pnpm --version >nul 2>&1
-if errorlevel 1 (
-    echo Error: pnpm is not installed.
-    echo Please install pnpm first: npm install -g pnpm
-    pause
-    exit /b 1
+REM Clear Vite cache to avoid permission issues
+if exist "node_modules\.vite" (
+    echo Clearing Vite cache...
+    rmdir /s /q "node_modules\.vite" 2>nul
 )
 
-REM Check if Rust is available
-cargo --version >nul 2>&1
-if errorlevel 1 (
-    echo Error: Rust/Cargo is not installed.
-    echo Please install Rust from https://rustup.rs/
-    pause
-    exit /b 1
+REM Clear npm cache
+echo Clearing npm cache...
+call npm cache clean --force
+
+REM Install dependencies if needed
+if not exist "node_modules" (
+    echo Installing dependencies...
+    call npm install
 )
 
-echo Dependencies check passed.
-echo.
-echo Starting System Monitor...
+REM Start the Tauri application
+echo Starting Tauri development server...
 echo This will open a native application window with real system data.
 echo.
-
-REM Run Tauri in development mode
-pnpm run tauri dev
+call npm run tauri dev
 
 echo.
 echo Application closed.
