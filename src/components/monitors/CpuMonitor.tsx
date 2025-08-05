@@ -14,24 +14,33 @@ export const CpuMonitor: React.FC<CpuMonitorProps> = ({ metrics }) => {
   
   const coreData = useMemo(() => {
     return metrics.per_core_usage.map((usage, index) => ({
-      core: `Core ${index}`,
+      core: `Thread ${index + 1}`,
       usage: usage,
     }));
   }, [metrics.per_core_usage]);
 
-  // Dynamically determine grid columns based on core count
+  // Dynamically determine grid columns based on thread count
   const gridCols = useMemo(() => {
-    const coreCount = metrics.per_core_usage.length;
-    if (coreCount <= 4) return 'grid-cols-2 sm:grid-cols-4';
-    if (coreCount <= 8) return 'grid-cols-4 sm:grid-cols-4 md:grid-cols-8';
-    if (coreCount <= 16) return 'grid-cols-4 sm:grid-cols-8 md:grid-cols-8 lg:grid-cols-8';
-    if (coreCount <= 32) return 'grid-cols-8 sm:grid-cols-8 md:grid-cols-16';
-    // For very high core counts, show a simplified view
+    const threadCount = metrics.per_core_usage.length;
+    if (threadCount <= 4) return 'grid-cols-2 sm:grid-cols-4';
+    if (threadCount <= 8) return 'grid-cols-4 sm:grid-cols-4 md:grid-cols-8';
+    if (threadCount <= 16) return 'grid-cols-4 sm:grid-cols-8 md:grid-cols-8 lg:grid-cols-8';
+    if (threadCount <= 32) return 'grid-cols-8 sm:grid-cols-8 md:grid-cols-16';
+    // For very high thread counts, show a simplified view
     return 'grid-cols-8 sm:grid-cols-12 md:grid-cols-16';
   }, [metrics.per_core_usage.length]);
 
-  // For systems with many cores, show a summary instead of individual cores
-  const showDetailedCores = metrics.per_core_usage.length <= 32;
+  // For systems with many threads, show a summary instead of individual threads
+  const showDetailedThreads = metrics.per_core_usage.length <= 32;
+
+  // Format load average to show actual values
+  const formatLoadAverage = (loadAvg: [number, number, number]) => {
+    // Check if all values are zero (likely not available on Windows)
+    if (loadAvg.every(v => v === 0)) {
+      return "Not available";
+    }
+    return loadAvg.map(v => v.toFixed(2)).join(', ');
+  };
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-lg border border-gray-200 dark:border-gray-700 transition-colors duration-200">
@@ -76,10 +85,15 @@ export const CpuMonitor: React.FC<CpuMonitorProps> = ({ metrics }) => {
         
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <p className="metric-label">Load Average</p>
+            <p className="metric-label">Load Average (1min, 5min, 15min)</p>
             <p className="text-sm text-gray-300">
-              {metrics.load_average.map(v => v.toFixed(2)).join(', ')}
+              {formatLoadAverage(metrics.load_average)}
             </p>
+            {metrics.load_average.every(v => v === 0) && (
+              <p className="text-xs text-gray-500 mt-1">
+                Load average not available on Windows systems
+              </p>
+            )}
           </div>
           <div>
             <p className="metric-label">Processes</p>
@@ -89,9 +103,9 @@ export const CpuMonitor: React.FC<CpuMonitorProps> = ({ metrics }) => {
           </div>
         </div>
         
-        {showDetailedCores ? (
+        {showDetailedThreads ? (
           <div>
-            <p className="metric-label mb-2">Per Core Usage ({metrics.per_core_usage.length} cores)</p>
+            <p className="metric-label mb-2">Per Thread Usage ({metrics.per_core_usage.length} threads)</p>
             <div className={`grid ${gridCols} gap-1`}>
               {coreData.map((core, index) => (
                 <div key={core.core} className="text-center group">
@@ -104,14 +118,14 @@ export const CpuMonitor: React.FC<CpuMonitorProps> = ({ metrics }) => {
                       <span className="text-xs font-medium">{formatPercent(core.usage, 0)}</span>
                     </div>
                   </div>
-                  <p className="text-xs text-gray-400 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">C{index}</p>
+                  <p className="text-xs text-gray-400 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">T{index + 1}</p>
                 </div>
               ))}
             </div>
           </div>
         ) : (
           <div>
-            <p className="metric-label mb-2">Core Summary ({metrics.per_core_usage.length} cores)</p>
+            <p className="metric-label mb-2">Thread Summary ({metrics.per_core_usage.length} threads)</p>
             <div className="grid grid-cols-3 gap-4 text-sm">
               <div>
                 <p className="text-gray-400">Average</p>
@@ -135,7 +149,7 @@ export const CpuMonitor: React.FC<CpuMonitorProps> = ({ metrics }) => {
               </div>
             </div>
             <div className="mt-2 text-xs text-gray-400">
-              Individual core view disabled for high core count systems
+              Individual thread view disabled for high thread count systems
             </div>
           </div>
         )}

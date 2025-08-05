@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use sysinfo::{System, Disks, Networks, ProcessStatus};
+use std::collections::HashMap;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SystemInfo {
@@ -117,6 +119,7 @@ pub struct SystemMetrics {
 pub struct MonitoringService {
     system: Arc<RwLock<System>>,
     metrics_callback: Arc<RwLock<Option<Box<dyn Fn(SystemMetrics) + Send + Sync>>>>,
+    previous_network_stats: Arc<RwLock<HashMap<String, (u64, u64)>>>,
 }
 
 impl MonitoringService {
@@ -124,6 +127,7 @@ impl MonitoringService {
         Self {
             system: Arc::new(RwLock::new(System::new_all())),
             metrics_callback: Arc::new(RwLock::new(None)),
+            previous_network_stats: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -177,6 +181,110 @@ impl MonitoringService {
         })
     }
 
+    async fn get_gpu_metrics(&self) -> Vec<GpuMetrics> {
+        let mut gpus = Vec::new();
+        
+        // Try to get NVIDIA GPU info if available
+        #[cfg(feature = "nvidia")]
+        {
+            if let Ok(nvml) = nvml_wrapper::Nvml::init() {
+                if let Ok(device_count) = nvml.device_count() {
+                    for i in 0..device_count {
+                        if let Ok(device) = nvml.device_by_index(i) {
+                            if let (Ok(name), Ok(memory), Ok(utilization), Ok(temperature)) = (
+                                device.name(),
+                                device.memory_info(),
+                                device.utilization_rates(),
+                                device.temperature(nvml_wrapper::enum_wrappers::device::TemperatureSensor::Gpu)
+                            ) {
+                                let memory_usage_percent = if memory.total > 0 {
+                                    (memory.used as f32 / memory.total as f32) * 100.0
+                                } else {
+                                    0.0
+                                };
+                                
+                                gpus.push(GpuMetrics {
+                                    name: name.trim().to_string(),
+                                    driver_version: nvml.sys_driver_version().unwrap_or_default(),
+                                    temperature_celsius: temperature as f32,
+                                    usage_percent: utilization.gpu as f32,
+                                    memory_total_bytes: memory.total,
+                                    memory_used_bytes: memory.used,
+                                    memory_usage_percent,
+                                    power_watts: device.power_usage().unwrap_or(0) as f32 / 1000.0,
+                                    fan_speed_percent: device.fan_speed(0).ok().map(|speed| speed as f32),
+                                    clock_mhz: device.max_clock_info(nvml_wrapper::enum_wrappers::device::Clock::Gpu).unwrap_or(0) as f32,
+                                    memory_clock_mhz: device.max_clock_info(nvml_wrapper::enum_wrappers::device::Clock::Memory).unwrap_or(0) as f32,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        gpus
+    }
+
+    async fn get_disk_metrics(&self) -> Vec<DiskMetrics> {
+        let disks = Disks::new_with_refreshed_list();
+        let disk_metrics: Vec<DiskMetrics> = disks.iter()
+            .map(|disk| DiskMetrics {
+                mount_point: disk.mount_point().to_string_lossy().to_string(),
+                device_name: disk.name().to_string_lossy().to_string(),
+                fs_type: disk.file_system().to_string_lossy().to_string(),
+                total_bytes: disk.total_space(),
+                used_bytes: disk.total_space() - disk.available_space(),
+                available_bytes: disk.available_space(),
+                usage_percent: ((disk.total_space() - disk.available_space()) as f32 / disk.total_space() as f32) * 100.0,
+                read_bytes_per_sec: 0, // sysinfo doesn't provide this in current version
+                write_bytes_per_sec: 0, // sysinfo doesn't provide this in current version
+                io_operations_per_sec: 0, // sysinfo doesn't provide this in current version
+            })
+            .collect();
+        
+        disk_metrics
+    }
+
+    async fn get_network_metrics(&self) -> Vec<NetworkMetrics> {
+        let networks = Networks::new_with_refreshed_list();
+        let mut network_metrics = Vec::new();
+        let mut previous_stats = self.previous_network_stats.write().await;
+        
+        for (name, data) in networks.iter() {
+            let current_sent = data.total_transmitted();
+            let current_received = data.total_received();
+            
+            let (sent_rate, received_rate) = if let Some((prev_sent, prev_received)) = previous_stats.get(name) {
+                let sent_diff = current_sent.saturating_sub(*prev_sent);
+                let received_diff = current_received.saturating_sub(*prev_received);
+                (sent_diff, received_diff)
+            } else {
+                (0, 0)
+            };
+            
+            previous_stats.insert(name.clone(), (current_sent, current_received));
+            
+            network_metrics.push(NetworkMetrics {
+                interface_name: name.clone(),
+                is_up: true, // Assume up if we can get data
+                mac_address: String::new(), // Would need additional system calls
+                ip_addresses: vec![], // Would need additional system calls
+                bytes_sent: current_sent,
+                bytes_received: current_received,
+                packets_sent: data.total_packets_transmitted(),
+                packets_received: data.total_packets_received(),
+                errors_sent: 0, // Would need additional system calls
+                errors_received: 0, // Would need additional system calls
+                speed_mbps: None, // Would need additional system calls
+                bytes_sent_rate: sent_rate,
+                bytes_received_rate: received_rate,
+            });
+        }
+        
+        network_metrics
+    }
+
     pub async fn collect_metrics(&self) -> Result<SystemMetrics, String> {
         println!("=== collect_metrics called ===");
         let mut sys = self.system.write().await;
@@ -184,7 +292,7 @@ impl MonitoringService {
         sys.refresh_all();
         println!("System data refreshed");
         
-        // Drop the write lock before calling get_system_info to avoid deadlock
+        // Drop the write lock before calling other methods to avoid deadlock
         drop(sys);
         
         println!("Getting system info for metrics...");
@@ -200,7 +308,22 @@ impl MonitoringService {
             .map(|cpu| cpu.cpu_usage())
             .collect();
         
+        println!("CPU usage - Global: {}%, Per-thread: {:?}", cpu_usage, per_core_usage);
+        println!("CPU count: {}", sys.cpus().len());
+        println!("Physical cores: {}", sys.physical_core_count().unwrap_or(0));
+        
         let load_avg = System::load_average();
+        println!("Load average - 1min: {}, 5min: {}, 15min: {}", load_avg.one, load_avg.five, load_avg.fifteen);
+        
+        // On Windows, load average might not be available, so we'll use a fallback
+        let load_average = if load_avg.one == 0.0 && load_avg.five == 0.0 && load_avg.fifteen == 0.0 {
+            // Fallback: calculate a simple load based on CPU usage
+            let avg_cpu = per_core_usage.iter().sum::<f32>() / per_core_usage.len() as f32;
+            let load_factor = avg_cpu / 100.0;
+            [load_factor, load_factor * 0.8, load_factor * 0.6]
+        } else {
+            [load_avg.one as f32, load_avg.five as f32, load_avg.fifteen as f32]
+        };
         
         let cpu_metrics = CpuMetrics {
             usage_percent: cpu_usage,
@@ -209,13 +332,13 @@ impl MonitoringService {
                 .unwrap_or(0),
             per_core_usage,
             temperature: None, // Would need sensors crate
-            load_average: [load_avg.one as f32, load_avg.five as f32, load_avg.fifteen as f32],
+            load_average,
             processes_total: sys.processes().len(),
             processes_running: sys.processes().values()
                 .filter(|p| matches!(p.status(), ProcessStatus::Run))
                 .count(),
-            context_switches: 0, // Not available in sysinfo 
-            interrupts: 0, // Not available in sysinfo
+            context_switches: 0, // Would need additional system calls
+            interrupts: 0, // Would need additional system calls
         };
         
         // Memory metrics
@@ -223,7 +346,7 @@ impl MonitoringService {
             total_bytes: sys.total_memory() * 1024,
             used_bytes: sys.used_memory() * 1024,
             available_bytes: sys.available_memory() * 1024,
-            cached_bytes: 0, // Not available in sysinfo
+            cached_bytes: 0, // Would need additional system calls
             swap_total_bytes: sys.total_swap() * 1024,
             swap_used_bytes: sys.used_swap() * 1024,
             usage_percent: (sys.used_memory() as f32 / sys.total_memory() as f32) * 100.0,
@@ -234,42 +357,10 @@ impl MonitoringService {
             },
         };
         
-        // Disk metrics
-        let disks = Disks::new_with_refreshed_list();
-        let disk_metrics: Vec<DiskMetrics> = disks.iter()
-            .map(|disk| DiskMetrics {
-                mount_point: disk.mount_point().to_string_lossy().to_string(),
-                device_name: disk.name().to_string_lossy().to_string(),
-                fs_type: disk.file_system().to_string_lossy().to_string(),
-                total_bytes: disk.total_space(),
-                used_bytes: disk.total_space() - disk.available_space(),
-                available_bytes: disk.available_space(),
-                usage_percent: ((disk.total_space() - disk.available_space()) as f32 / disk.total_space() as f32) * 100.0,
-                read_bytes_per_sec: 0, // Not available in sysinfo
-                write_bytes_per_sec: 0, // Not available in sysinfo
-                io_operations_per_sec: 0, // Not available in sysinfo
-            })
-            .collect();
-        
-        // Network metrics
-        let networks = Networks::new_with_refreshed_list();
-        let network_metrics: Vec<NetworkMetrics> = networks.iter()
-            .map(|(name, data)| NetworkMetrics {
-                interface_name: name.clone(),
-                is_up: true, // Assume up if we can get data
-                mac_address: String::new(), // Not available in sysinfo
-                ip_addresses: vec![], // Not available in sysinfo
-                bytes_sent: data.total_transmitted(),
-                bytes_received: data.total_received(),
-                packets_sent: data.total_packets_transmitted(),
-                packets_received: data.total_packets_received(),
-                errors_sent: 0, // Not available in sysinfo
-                errors_received: 0, // Not available in sysinfo
-                speed_mbps: None, // Not available in sysinfo
-                bytes_sent_rate: 0, // Not available in sysinfo
-                bytes_received_rate: 0, // Not available in sysinfo
-            })
-            .collect();
+        // Get enhanced metrics
+        let disk_metrics = self.get_disk_metrics().await;
+        let network_metrics = self.get_network_metrics().await;
+        let gpu_metrics = self.get_gpu_metrics().await;
         
         // Top processes
         let mut processes: Vec<ProcessMetrics> = sys.processes().values()
@@ -279,23 +370,28 @@ impl MonitoringService {
                 cpu_usage_percent: process.cpu_usage(),
                 memory_bytes: process.memory() * 1024,
                 memory_percent: (process.memory() as f32 / sys.total_memory() as f32) * 100.0,
-                disk_read_bytes: 0, // Not available in sysinfo
-                disk_write_bytes: 0, // Not available in sysinfo
+                disk_read_bytes: 0, // Would need additional system calls
+                disk_write_bytes: 0, // Would need additional system calls
                 status: format!("{:?}", process.status()),
-                threads: 1, // Default to 1 thread since sysinfo doesn't provide thread count easily
-                start_time: chrono::Utc::now().timestamp().to_string(), // Not available in sysinfo
+                threads: 1, // Would need additional system calls
+                start_time: SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs()
+                    .to_string(),
             })
             .collect();
         
         processes.sort_by(|a, b| b.cpu_usage_percent.partial_cmp(&a.cpu_usage_percent).unwrap());
         processes.truncate(10);
         
-        // GPU metrics (empty for now since sysinfo doesn't provide GPU data)
-        let gpu_metrics: Vec<GpuMetrics> = vec![];
-        
         println!("Creating SystemMetrics object...");
         let metrics = SystemMetrics {
-            timestamp: chrono::Utc::now().timestamp().to_string(),
+            timestamp: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs()
+                .to_string(),
             system_info,
             cpu: cpu_metrics,
             memory: memory_metrics,
@@ -326,6 +422,7 @@ impl MonitoringService {
                 let service = MonitoringService {
                     system: system.clone(),
                     metrics_callback: callback.clone(),
+                    previous_network_stats: Arc::new(RwLock::new(HashMap::new())),
                 };
                 
                 match service.collect_metrics().await {

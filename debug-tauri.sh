@@ -1,62 +1,98 @@
 #!/bin/bash
 
-echo "=== Debugging Tauri System Detection ==="
+# Tauri Debug Helper
+# This script helps diagnose Tauri application issues
+
+echo "=== TAURI DEBUG HELPER ==="
 echo ""
 
-# Step 1: Check if we can access system info directly
-echo "1. Testing direct system access..."
-echo "-----------------------------------"
+# Check if we're in the right directory
+if [ ! -f "package.json" ]; then
+    echo "Error: package.json not found. Please run this script from the project root."
+    exit 1
+fi
 
-# Create a simple Python test
-cat > /tmp/test_system.py << 'EOF'
-import platform
-import psutil
-import socket
+echo "Checking system requirements..."
 
-print("System Information Test:")
-print(f"  Hostname: {socket.gethostname()}")
-print(f"  Platform: {platform.system()} {platform.release()}")
-print(f"  CPU Count: {psutil.cpu_count()}")
-print(f"  Memory: {psutil.virtual_memory().total / (1024**3):.1f} GB")
-print(f"  CPU Usage: {psutil.cpu_percent(interval=1)}%")
-EOF
+# Check Node.js
+if command -v node &> /dev/null; then
+    NODE_VERSION=$(node --version)
+    echo "✓ Node.js: $NODE_VERSION"
+else
+    echo "✗ Node.js not found"
+fi
 
-python3 /tmp/test_system.py 2>/dev/null || echo "Python test failed - psutil not installed"
+# Check pnpm
+if command -v pnpm &> /dev/null; then
+    PNPM_VERSION=$(pnpm --version)
+    echo "✓ pnpm: $PNPM_VERSION"
+else
+    echo "✗ pnpm not found"
+fi
+
+# Check Rust
+if command -v cargo &> /dev/null; then
+    RUST_VERSION=$(cargo --version)
+    echo "✓ Rust: $RUST_VERSION"
+else
+    echo "✗ Rust not found"
+fi
+
+# Check Tauri CLI
+if command -v tauri &> /dev/null; then
+    TAURI_VERSION=$(tauri --version)
+    echo "✓ Tauri CLI: $TAURI_VERSION"
+else
+    echo "✗ Tauri CLI not found"
+fi
 
 echo ""
-echo "2. Checking Tauri window status..."
-echo "-----------------------------------"
+echo "Checking project setup..."
 
-# Check if any Tauri window exists
-xwininfo -root -tree 2>/dev/null | grep -E '"[^"]+".*\(' | grep -v -E "(Firefox|Chrome|Terminal)" | head -10
+# Check if dependencies are installed
+if [ -d "node_modules" ]; then
+    echo "✓ Node dependencies installed"
+else
+    echo "✗ Node dependencies not installed (run: pnpm install)"
+fi
+
+# Check if Rust dependencies are built
+if [ -d "src-tauri/target" ]; then
+    echo "✓ Rust target directory exists"
+else
+    echo "✗ Rust target directory not found (will be created on first build)"
+fi
 
 echo ""
-echo "3. Questions to verify:"
-echo "-----------------------------------"
-echo "When you run 'pnpm run tauri dev':"
-echo ""
-echo "a) Do you see a NEW WINDOW open? (Not the browser)"
-echo "   - If YES: That's the Tauri window - what does it show?"
-echo "   - If NO: The Tauri window is not opening (snap issue)"
-echo ""
-echo "b) In the terminal output, do you see:"
-echo "   - '=== Tauri App Setup ===' ?"
-echo "   - '=== get_system_info called ===' ?"
-echo "   - Any error messages?"
-echo ""
-echo "c) Are you looking at:"
-echo "   - Firefox/Chrome at localhost:5173? (This is ALWAYS mock data)"
-echo "   - A separate application window? (This would be the real Tauri app)"
-echo ""
+echo "Common issues and solutions:"
 
-echo "4. Let's check the console output..."
-echo "-----------------------------------"
-echo "If the Tauri window IS open:"
-echo "1. Right-click in the window"
-echo "2. Select 'Inspect Element' or press F12"
-echo "3. Go to the Console tab"
-echo "4. Look for these messages:"
-echo "   - 'TAURI DETECTED - NOT USING MOCK SERVICE'"
-echo "   - 'USING MOCK SERVICE - NOT REAL SYSTEM DATA'"
+echo "1. If Tauri window doesn't open:"
+echo "   - Check console for error messages"
+echo "   - Ensure you're running 'pnpm run tauri dev' (not just 'pnpm run dev')"
+echo "   - Look for a separate application window (not browser tab)"
+
 echo ""
-echo "Which message do you see?"
+echo "2. If you see 'Tauri environment not detected':"
+echo "   - You're running in a browser instead of Tauri"
+echo "   - Use 'pnpm run tauri dev' to launch the native app"
+
+echo ""
+echo "3. If the app is stuck loading:"
+echo "   - Check the developer console (F12 in Tauri window)"
+echo "   - Look for initialization errors"
+echo "   - Verify system permissions are granted"
+
+echo ""
+echo "4. For GPU monitoring issues:"
+echo "   - Ensure NVIDIA drivers are installed"
+echo "   - Check that nvml-wrapper feature is enabled"
+echo "   - Verify you have an NVIDIA GPU"
+
+echo ""
+echo "To run the application:"
+echo "  pnpm run tauri dev    # Development mode"
+echo "  pnpm run tauri build  # Production build"
+
+echo ""
+echo "For more detailed debugging, run:"
+echo "  RUST_LOG=debug pnpm run tauri dev"

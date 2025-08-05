@@ -8,6 +8,7 @@ import { MemoryMonitor } from './monitors/MemoryMonitor';
 import { DiskMonitor } from './monitors/DiskMonitor';
 import { NetworkMonitor } from './monitors/NetworkMonitor';
 import { ProcessList } from './monitors/ProcessList';
+import { GpuMonitor } from './monitors/GpuMonitor';
 import { SystemOverview } from './SystemOverview';
 import { GripVertical, Settings } from 'lucide-react';
 
@@ -64,6 +65,14 @@ export const DraggableDashboard: React.FC<DraggableDashboardProps> = ({ systemIn
         title: 'Memory Monitor',
         component: MemoryMonitor,
         props: { metrics: metrics?.memory },
+        size: 'medium',
+        visible: true
+      },
+      {
+        id: 'gpu',
+        title: 'GPU Monitor',
+        component: GpuMonitor,
+        props: { gpus: metrics?.gpus },
         size: 'medium',
         visible: true
       },
@@ -154,6 +163,8 @@ export const DraggableDashboard: React.FC<DraggableDashboardProps> = ({ systemIn
         return { ...widget, props: { metrics: metrics?.cpu } };
       case 'memory':
         return { ...widget, props: { metrics: metrics?.memory } };
+      case 'gpu':
+        return { ...widget, props: { gpus: metrics?.gpus } };
       case 'disk':
         return { ...widget, props: { disks: metrics?.disks } };
       case 'network':

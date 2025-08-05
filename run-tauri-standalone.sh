@@ -1,38 +1,47 @@
 #!/bin/bash
 
-echo "=== Tauri Standalone Runner ==="
-echo "This will run the Tauri app with real system data"
+# Tauri Standalone Launcher
+# This script attempts to run the Tauri app without snap conflicts
+
+echo "=== TAURI STANDALONE LAUNCHER ==="
+echo "Attempting to run Tauri app without snap conflicts..."
+
+# Check if we're in the right directory
+if [ ! -f "package.json" ]; then
+    echo "Error: package.json not found. Please run this script from the project root."
+    exit 1
+fi
+
+# Check if pnpm is available
+if ! command -v pnpm &> /dev/null; then
+    echo "Error: pnpm is not installed. Please install pnpm first."
+    echo "npm install -g pnpm"
+    exit 1
+fi
+
+# Check if Rust is available
+if ! command -v cargo &> /dev/null; then
+    echo "Error: Rust/Cargo is not installed. Please install Rust first."
+    echo "Visit: https://rustup.rs/"
+    exit 1
+fi
+
+echo "✓ Dependencies check passed"
 echo ""
 
-# Kill any existing processes
-pkill -f "system-monitor" || true
-pkill -f "tauri dev" || true
-sleep 2
-
-# Create a wrapper script that completely isolates from snap
-cat > /tmp/tauri-runner.sh << 'EOF'
-#!/bin/bash
-# Clear ALL environment variables
-env -i \
-  HOME="$HOME" \
-  USER="$USER" \
-  PATH="/home/ubuntu/.cargo/bin:/home/ubuntu/.nvm/versions/node/v22.17.1/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
-  LD_LIBRARY_PATH="/lib/x86_64-linux-gnu:/usr/lib/x86_64-linux-gnu" \
-  WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1 \
-  WEBKIT_FORCE_SANDBOX=0 \
-  DISPLAY="$DISPLAY" \
-  XAUTHORITY="$XAUTHORITY" \
-  /bin/bash -c 'cd /home/ubuntu/system-detection && pnpm run tauri dev'
-EOF
-
-chmod +x /tmp/tauri-runner.sh
-
-echo "Starting Tauri in completely clean environment..."
-echo "This may take 2-3 minutes to compile on first run."
-echo ""
-echo "IMPORTANT: Look for a NEW WINDOW to open - that's the Tauri app with real data!"
-echo "The browser at localhost:5173 will always show mock data."
+# Try to run Tauri in development mode
+echo "Starting Tauri development mode..."
+echo "This will open a native application window with real system data."
 echo ""
 
-# Run the wrapper script
-/tmp/tauri-runner.sh
+# Set environment variables to avoid snap conflicts
+export LD_LIBRARY_PATH="/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH"
+export PATH="/usr/local/bin:/usr/bin:$PATH"
+
+# Run Tauri
+pnpm run tauri dev
+
+echo ""
+echo "Tauri application closed."
+echo "If you encountered issues, try building for production instead:"
+echo "  pnpm run tauri build"

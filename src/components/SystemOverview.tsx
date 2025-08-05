@@ -22,7 +22,7 @@ export const SystemOverview: React.FC<SystemOverviewProps> = ({ systemInfo }) =>
           </div>
           <p className="text-gray-900 dark:text-white font-semibold">{systemInfo.cpu_brand}</p>
           <p className="text-sm text-gray-600 dark:text-gray-400">
-            {systemInfo.cpu_cores} cores, {systemInfo.cpu_threads} threads
+            {systemInfo.cpu_cores} physical cores, {systemInfo.cpu_threads} logical processors
           </p>
         </div>
         
