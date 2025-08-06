@@ -7,6 +7,7 @@ use std::thread;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex as StdMutex;
 use rayon::prelude::*;
+use sysinfo;
 
 // High-performance metrics with microsecond precision
 #[derive(Debug, Clone, Serialize, Deserialize)]

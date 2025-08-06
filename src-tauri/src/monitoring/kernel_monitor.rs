@@ -161,10 +161,10 @@ impl KernelMonitor {
                 }
             }
             
-            // Ultra-low latency sleep (target: <10µs)
+                         // Sleep for 3 seconds between collections
             let elapsed = start.elapsed();
-            if elapsed < Duration::from_micros(10) {
-                std::thread::sleep(Duration::from_micros(10) - elapsed);
+                         if elapsed < Duration::from_secs(3) {
+                 std::thread::sleep(Duration::from_secs(3) - elapsed);
             }
         }
     }

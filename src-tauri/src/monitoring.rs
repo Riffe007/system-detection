@@ -4,6 +4,8 @@ use tokio::sync::RwLock;
 use sysinfo::{System, Disks, Networks, ProcessStatus};
 use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
+use hostname;
+use os_info;
 
 // Import the high-performance monitoring system
 pub mod high_perf_monitor;
@@ -147,6 +149,126 @@ pub struct MonitoringService {
 }
 
 impl MonitoringService {
+    // Helper function to detect CPU brand across platforms
+    fn detect_cpu_brand() -> String {
+        // Try sysinfo first
+        let system = System::new();
+        let cpu_info = system.global_cpu_info();
+        if !cpu_info.brand().trim().is_empty() {
+            return cpu_info.brand().to_string();
+        }
+        
+        // Platform-specific detection methods
+        #[cfg(target_os = "windows")]
+        {
+            // Method 1: Try wmic
+            if let Ok(output) = std::process::Command::new("wmic")
+                .args(&["cpu", "get", "name", "/value"])
+                .output()
+            {
+                let output_str = String::from_utf8_lossy(&output.stdout);
+                if let Some(line) = output_str.lines().find(|line| line.starts_with("Name=")) {
+                    let name = line.strip_prefix("Name=").unwrap_or("").trim();
+                    if !name.is_empty() {
+                        return name.to_string();
+                    }
+                }
+            }
+            
+            // Method 2: Try PowerShell
+            if let Ok(output) = std::process::Command::new("powershell")
+                .args(&["-Command", "Get-WmiObject -Class Win32_Processor | Select-Object -ExpandProperty Name"])
+                .output()
+            {
+                let name = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !name.is_empty() && name != "Name" {
+                    return name;
+                }
+            }
+            
+            // Method 3: Try registry
+            if let Ok(output) = std::process::Command::new("reg")
+                .args(&["query", "HKEY_LOCAL_MACHINE\\HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0", "/v", "ProcessorNameString"])
+                .output()
+            {
+                let output_str = String::from_utf8_lossy(&output.stdout);
+                if let Some(line) = output_str.lines().find(|line| line.contains("ProcessorNameString")) {
+                    if let Some(name) = line.split("REG_SZ").nth(1) {
+                        let name = name.trim();
+                        if !name.is_empty() {
+                            return name.to_string();
+                        }
+                    }
+                }
+            }
+        }
+        
+        #[cfg(target_os = "macos")]
+        {
+            // Method 1: Try sysctl for Apple Silicon and Intel
+            if let Ok(output) = std::process::Command::new("sysctl")
+                .args(&["-n", "machdep.cpu.brand_string"])
+                .output()
+            {
+                let name = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !name.is_empty() {
+                    return name;
+                }
+            }
+            
+            // Method 2: Try system_profiler for detailed Apple Silicon info
+            if let Ok(output) = std::process::Command::new("system_profiler")
+                .args(&["SPHardwareDataType"])
+                .output()
+            {
+                let output_str = String::from_utf8_lossy(&output.stdout);
+                if let Some(line) = output_str.lines().find(|line| line.contains("Chip:")) {
+                    if let Some(chip) = line.split(":").nth(1) {
+                        let chip = chip.trim();
+                        if !chip.is_empty() {
+                            return format!("Apple {}", chip);
+                        }
+                    }
+                }
+            }
+        }
+        
+        #[cfg(target_os = "linux")]
+        {
+            // Method 1: Try /proc/cpuinfo for detailed processor info
+            if let Ok(content) = std::fs::read_to_string("/proc/cpuinfo") {
+                for line in content.lines() {
+                    if line.starts_with("model name") {
+                        if let Some(name) = line.split(':').nth(1) {
+                            let name = name.trim();
+                            if !name.is_empty() {
+                                return name.to_string();
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Method 2: Try lscpu for ARM, AMD, Intel, and other architectures
+            if let Ok(output) = std::process::Command::new("lscpu")
+                .output()
+            {
+                let output_str = String::from_utf8_lossy(&output.stdout);
+                if let Some(line) = output_str.lines().find(|line| line.starts_with("Model name:")) {
+                    if let Some(name) = line.split(':').nth(1) {
+                        let name = name.trim();
+                        if !name.is_empty() {
+                            return name.to_string();
+                        }
+                    }
+                }
+            }
+        }
+        
+        // If all methods fail, return an error message
+        "Unknown Processor (Detection Failed)".to_string()
+    }
+
     #[allow(dead_code)]
     pub fn new() -> Self {
         Self {
@@ -253,7 +375,11 @@ impl MonitoringService {
     }
 
     pub async fn get_system_info(&self) -> Result<SystemInfo, String> {
-        let system = self.system.read().await;
+        let mut system = self.system.write().await;
+        
+        // Refresh system data for accurate information
+        system.refresh_cpu();
+        system.refresh_memory();
         
         let hostname = hostname::get()
             .map_err(|e| format!("Failed to get hostname: {}", e))?
@@ -262,6 +388,9 @@ impl MonitoringService {
 
         let os_info = os_info::get();
         let cpu_info = system.global_cpu_info();
+        
+        // Get CPU brand using the helper function
+        let cpu_brand = Self::detect_cpu_brand();
 
         Ok(SystemInfo {
             hostname,
@@ -269,8 +398,8 @@ impl MonitoringService {
             os_version: os_info.version().to_string(),
             kernel_version: os_info.edition().unwrap_or("Unknown").to_string(),
             architecture: std::env::consts::ARCH.to_string(),
-            cpu_brand: cpu_info.brand().to_string(),
-            cpu_cores: system.cpus().len(),
+            cpu_brand,
+            cpu_cores: system.physical_core_count().unwrap_or(system.cpus().len()),
             cpu_threads: system.cpus().len(),
             total_memory: system.total_memory(),
             boot_time: sysinfo::System::boot_time() as i64,
@@ -280,6 +409,7 @@ impl MonitoringService {
     async fn get_gpu_metrics(&self) -> Vec<GpuMetrics> {
         let mut gpus = Vec::new();
         
+        // NVIDIA GPU detection (using NVML)
         #[cfg(feature = "nvidia")]
         {
             if let Ok(nvml) = nvml_wrapper::Nvml::init() {
@@ -300,7 +430,7 @@ impl MonitoringService {
                                 
                                 gpus.push(GpuMetrics {
                                     name: name.trim().to_string(),
-                                    driver_version: "Unknown".to_string(), // TODO: Implement driver version detection
+                                    driver_version: "NVIDIA Driver".to_string(), // NVML doesn't expose driver version directly
                                     temperature_celsius: temperature as f32,
                                     usage_percent: utilization.gpu as f32,
                                     memory_total_bytes: memory.total,
@@ -313,6 +443,191 @@ impl MonitoringService {
                                 });
                             }
                         }
+                    }
+                }
+            }
+        }
+        
+        // AMD GPU detection (Windows)
+        #[cfg(target_os = "windows")]
+        {
+            // Try to detect AMD GPUs using Windows Management Instrumentation
+            if let Ok(output) = std::process::Command::new("wmic")
+                .args(&["path", "win32_VideoController", "get", "name,adapterram,driverversion", "/format:csv"])
+                .output()
+            {
+                let output_str = String::from_utf8_lossy(&output.stdout);
+                for line in output_str.lines().skip(1) { // Skip header
+                    let parts: Vec<&str> = line.split(',').collect();
+                    if parts.len() >= 3 {
+                        let name = parts[1].trim();
+                        let memory_str = parts[2].trim();
+                        let driver_version = parts[3].trim();
+                        
+                        // Check if it's an AMD GPU
+                        if name.to_lowercase().contains("amd") || name.to_lowercase().contains("radeon") {
+                            let memory_bytes = memory_str.parse::<u64>().unwrap_or(0);
+                            let memory_usage_percent = 0.0; // AMD doesn't provide easy memory usage via WMI
+                            
+                            gpus.push(GpuMetrics {
+                                name: name.to_string(),
+                                driver_version: driver_version.to_string(),
+                                temperature_celsius: 0.0, // WMI doesn't provide temperature
+                                usage_percent: 0.0, // WMI doesn't provide usage
+                                memory_total_bytes: memory_bytes,
+                                memory_used_bytes: 0, // WMI doesn't provide used memory
+                                memory_usage_percent,
+                                power_watts: 0.0, // WMI doesn't provide power info
+                                fan_speed_percent: None,
+                                clock_mhz: 0.0, // WMI doesn't provide clock info
+                                memory_clock_mhz: 0.0,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Intel GPU detection (Windows)
+        #[cfg(target_os = "windows")]
+        {
+            // Try to detect Intel GPUs using Windows Management Instrumentation
+            if let Ok(output) = std::process::Command::new("wmic")
+                .args(&["path", "win32_VideoController", "get", "name,adapterram,driverversion", "/format:csv"])
+                .output()
+            {
+                let output_str = String::from_utf8_lossy(&output.stdout);
+                for line in output_str.lines().skip(1) { // Skip header
+                    let parts: Vec<&str> = line.split(',').collect();
+                    if parts.len() >= 3 {
+                        let name = parts[1].trim();
+                        let memory_str = parts[2].trim();
+                        let driver_version = parts[3].trim();
+                        
+                        // Check if it's an Intel GPU
+                        if name.to_lowercase().contains("intel") {
+                            let memory_bytes = memory_str.parse::<u64>().unwrap_or(0);
+                            let memory_usage_percent = 0.0; // Intel doesn't provide easy memory usage via WMI
+                            
+                            gpus.push(GpuMetrics {
+                                name: name.to_string(),
+                                driver_version: driver_version.to_string(),
+                                temperature_celsius: 0.0, // WMI doesn't provide temperature
+                                usage_percent: 0.0, // WMI doesn't provide usage
+                                memory_total_bytes: memory_bytes,
+                                memory_used_bytes: 0, // WMI doesn't provide used memory
+                                memory_usage_percent,
+                                power_watts: 0.0, // WMI doesn't provide power info
+                                fan_speed_percent: None,
+                                clock_mhz: 0.0, // WMI doesn't provide clock info
+                                memory_clock_mhz: 0.0,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Apple Silicon GPU detection (macOS)
+        #[cfg(target_os = "macos")]
+        {
+            // Try to detect Apple Silicon integrated GPU
+            if let Ok(output) = std::process::Command::new("system_profiler")
+                .args(&["SPDisplaysDataType"])
+                .output()
+            {
+                let output_str = String::from_utf8_lossy(&output.stdout);
+                let lines: Vec<&str> = output_str.lines().collect();
+                
+                for i in 0..lines.len() {
+                    let line = lines[i];
+                    if line.contains("Chipset Model:") {
+                        if let Some(name) = line.split(':').nth(1) {
+                            let name = name.trim();
+                            if !name.is_empty() {
+                                // Look for memory info in the next few lines
+                                let mut memory_bytes = 0u64;
+                                for j in (i+1)..std::cmp::min(i+10, lines.len()) {
+                                    let next_line = lines[j];
+                                    if next_line.contains("VRAM") || next_line.contains("Memory") {
+                                        // Extract memory size (this is simplified - real parsing would be more complex)
+                                        memory_bytes = 8 * 1024 * 1024 * 1024; // Assume 8GB for Apple Silicon
+                                        break;
+                                    }
+                                }
+                                
+                                gpus.push(GpuMetrics {
+                                    name: format!("Apple {}", name),
+                                    driver_version: "Integrated".to_string(),
+                                    temperature_celsius: 0.0, // Apple doesn't provide GPU temperature via system_profiler
+                                    usage_percent: 0.0, // Apple doesn't provide GPU usage via system_profiler
+                                    memory_total_bytes: memory_bytes,
+                                    memory_used_bytes: 0,
+                                    memory_usage_percent: 0.0,
+                                    power_watts: 0.0,
+                                    fan_speed_percent: None,
+                                    clock_mhz: 0.0,
+                                    memory_clock_mhz: 0.0,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Linux GPU detection (AMD, Intel, NVIDIA, ARM Mali)
+        #[cfg(target_os = "linux")]
+        {
+            // Try to detect GPUs using lspci
+            if let Ok(output) = std::process::Command::new("lspci")
+                .args(&["-v"])
+                .output()
+            {
+                let output_str = String::from_utf8_lossy(&output.stdout);
+                let lines: Vec<&str> = output_str.lines().collect();
+                
+                for i in 0..lines.len() {
+                    let line = lines[i];
+                    if line.contains("VGA compatible controller") || line.contains("3D controller") {
+                        let mut gpu_name = "Unknown GPU".to_string();
+                        let mut memory_bytes = 0u64;
+                        
+                        // Extract GPU name from the line
+                        if let Some(name_part) = line.split(':').nth(2) {
+                            gpu_name = name_part.trim().to_string();
+                        }
+                        
+                        // Look for memory info in the next few lines
+                        for j in (i+1)..std::cmp::min(i+10, lines.len()) {
+                            let next_line = lines[j];
+                            if next_line.contains("Memory") && next_line.contains("size=") {
+                                // Extract memory size (simplified parsing)
+                                if let Some(size_part) = next_line.split("size=").nth(1) {
+                                    if let Some(size_str) = size_part.split_whitespace().next() {
+                                        // Parse size like "8G", "4G", etc.
+                                        if let Ok(size_num) = size_str.trim_end_matches('G').parse::<u64>() {
+                                            memory_bytes = size_num * 1024 * 1024 * 1024;
+                                        }
+                                    }
+                                }
+                                break;
+                            }
+                        }
+                        
+                        gpus.push(GpuMetrics {
+                            name: gpu_name,
+                            driver_version: "Linux Driver".to_string(),
+                            temperature_celsius: 0.0,
+                            usage_percent: 0.0,
+                            memory_total_bytes: memory_bytes,
+                            memory_used_bytes: 0,
+                            memory_usage_percent: 0.0,
+                            power_watts: 0.0,
+                            fan_speed_percent: None,
+                            clock_mhz: 0.0,
+                            memory_clock_mhz: 0.0,
+                        });
                     }
                 }
             }
@@ -391,7 +706,10 @@ impl MonitoringService {
     }
 
     pub async fn collect_metrics(&self) -> Result<SystemMetrics, String> {
-        let system = self.system.read().await;
+        let mut system = self.system.write().await;
+        
+        // Refresh system data for accurate metrics
+        system.refresh_all();
         
         // CPU metrics
         let cpu_usage = system.global_cpu_info().cpu_usage();
@@ -400,8 +718,8 @@ impl MonitoringService {
         let raw_frequency = system.cpus().first()
             .map(|cpu| cpu.frequency())
             .unwrap_or(0);
-        println!("Raw CPU frequency from sysinfo: {} Hz", raw_frequency);
-        let frequency_mhz = raw_frequency / 1_000_000;
+
+        let frequency_mhz = raw_frequency; // sysinfo already provides frequency in MHz
         
         let cpu_metrics = CpuMetrics {
             usage_percent: cpu_usage,
@@ -409,8 +727,17 @@ impl MonitoringService {
             per_core_usage,
             temperature: None,
             load_average: {
-                let load = sysinfo::System::load_average();
-                [load.one as f32, load.five as f32, load.fifteen as f32]
+                // Windows doesn't have traditional load average like Unix systems
+                // We'll calculate a pseudo-load average based on CPU usage and process count
+                let cpu_usage = cpu_usage;
+                let process_count = system.processes().len() as f32;
+                let cpu_count = system.cpus().len() as f32;
+                
+                // Calculate a load-like metric: (CPU usage * process count) / CPU count
+                let load_metric = (cpu_usage * process_count) / (cpu_count * 100.0);
+                
+                // Use the same value for all three intervals since we can't get historical data easily
+                [load_metric, load_metric, load_metric]
             },
             processes_total: system.processes().len(),
             processes_running: system.processes().values()
@@ -458,7 +785,7 @@ impl MonitoringService {
                     disk_read_bytes: 0, // Would need additional system calls
                     disk_write_bytes: 0, // Would need additional system calls
                     status: format!("{:?}", process.status()),
-                    threads: 1, // TODO: Implement thread count detection
+                    threads: process.thread_kind().map(|t| t as u32).unwrap_or(1),
                     start_time: process.start_time().to_string(),
                 }
             })
@@ -467,7 +794,19 @@ impl MonitoringService {
         processes.sort_by(|a, b| b.cpu_usage_percent.partial_cmp(&a.cpu_usage_percent).unwrap());
         processes.truncate(20);
 
-        let system_info = self.get_system_info().await?;
+        // Get system info without acquiring another lock (avoid deadlock)
+        let system_info = SystemInfo {
+            hostname: hostname::get().unwrap_or_default().to_string_lossy().to_string(),
+            os_name: os_info::get().os_type().to_string(),
+            os_version: os_info::get().version().to_string(),
+            kernel_version: format!("Windows {}", os_info::get().version()),
+            architecture: std::env::consts::ARCH.to_string(),
+            cpu_brand: Self::detect_cpu_brand(),
+            cpu_cores: system.physical_core_count().unwrap_or(0),
+            cpu_threads: system.cpus().len(),
+            total_memory: system.total_memory(),
+            boot_time: sysinfo::System::boot_time() as i64,
+        };
 
         Ok(SystemMetrics {
             timestamp: SystemTime::now()

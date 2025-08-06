@@ -3,7 +3,7 @@ import { Dashboard } from './components/Dashboard';
 import { Header } from './components/Header';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { SystemInfo, SystemMetrics } from './types';
-import { detectTauriEnvironment, getTauriInvoke, getTauriListen } from './services/tauriDetector';
+
 import './App.css';
 
 declare global {
@@ -13,7 +13,11 @@ declare global {
 }
 
 export default function AppWrapper() {
-  console.log('AppWrapper component loaded');
+  console.log('=== AppWrapper component loaded ===');
+  console.log('Window location:', window.location.href);
+  console.log('Window __TAURI__:', window.__TAURI__);
+  console.log('Document title:', document.title);
+  console.log('Document ready state:', document.readyState);
   
   const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
   const [metrics, setMetrics] = useState<SystemMetrics | null>(null);
@@ -34,23 +38,20 @@ export default function AppWrapper() {
           console.error('Initialization timeout - setting loading to false');
           setLoading(false);
           setError('Initialization timed out. Please refresh the page.');
-        }, 15000); // 15 seconds timeout
+        }, 10000); // 10 seconds timeout
         
-        // Wait a bit for Tauri to be available
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        // Simple Tauri detection - just check if window.__TAURI__ exists
+        console.log('Checking for Tauri environment...');
+        console.log('window.__TAURI__:', window.__TAURI__);
         
-        // Use our comprehensive Tauri detector
-        const isTauri = await detectTauriEnvironment();
-        
-        console.log('=== Tauri Detection Result ===');
-        console.log('Is Tauri environment:', isTauri);
-        
-        if (!isTauri) {
+        if (!window.__TAURI__) {
           console.error('Tauri environment not detected');
           setError('This application requires Tauri runtime. Please run the application through Tauri, not in a browser.');
           setLoading(false);
           return;
         }
+        
+        console.log('✓ Tauri environment detected');
         
         console.log('Using real Tauri backend');
         console.log('TAURI DETECTED - USING REAL SYSTEM DATA');
@@ -58,19 +59,21 @@ export default function AppWrapper() {
         // Add a visual indicator
         document.title = 'System Monitor';
         
-        // Get Tauri invoke function
-        const invoke = await getTauriInvoke();
+        // Get Tauri invoke function - use direct access
+        const invoke = window.__TAURI__.core?.invoke || window.__TAURI__.tauri?.invoke;
         if (!invoke) {
           console.error('Failed to get Tauri invoke function');
           throw new Error('Tauri invoke not available');
         }
+        console.log('✓ Tauri invoke function available');
         
-        // Get listen function
-        const listen = await getTauriListen();
+        // Get listen function - use direct access
+        const listen = window.__TAURI__.event?.listen || window.__TAURI__.tauri?.event?.listen;
         if (!listen) {
           console.error('Failed to get Tauri listen function');
           throw new Error('Tauri listen not available');
         }
+        console.log('✓ Tauri listen function available');
         
         // Test basic connectivity by trying to get system info directly
         console.log('Testing Tauri connectivity...');
@@ -101,87 +104,60 @@ export default function AppWrapper() {
           return; // Don't continue if we can't start monitoring
         }
         
-        // Listen for metrics updates
-        try {
-          console.log('Setting up metrics listener...');
-          const unlisten = await listen('system-metrics', (event: any) => {
-            console.log('Received metrics update via event:', event);
-            console.log('Event payload:', event.payload);
-            setMetrics(event.payload);
-          });
-          console.log('Metrics listener set up successfully');
+                 // Get initial metrics immediately
+         try {
+           console.log('Getting initial metrics...');
+           const initialMetrics = await invoke('get_current_metrics');
+           console.log('Initial metrics received:', initialMetrics);
+           if (initialMetrics) {
+             setMetrics(initialMetrics);
+             console.log('Initial metrics state updated');
+           }
+         } catch (err) {
+           console.error('Failed to get initial metrics:', err);
+         }
+         
+         // Set up polling as the primary method for getting metrics
+         console.log('Setting up polling for metrics...');
+         const pollInterval = setInterval(async () => {
+           try {
+             console.log('Polling for metrics...');
+             const currentMetrics = await invoke('get_current_metrics');
+             console.log('Polled metrics received:', currentMetrics);
+             if (currentMetrics) {
+               setMetrics(currentMetrics);
+               console.log('Metrics state updated via polling');
+             }
+           } catch (err) {
+             console.error('Polling failed:', err);
+             if (err instanceof Error) {
+               console.error('Error details:', err.message, err.stack);
+             }
+           }
+         }, 3000); // Poll every 3 seconds
           
-          // Set up a fallback polling mechanism in case events don't work
-          const pollInterval = setInterval(async () => {
-            try {
-              console.log('Polling for metrics...');
-              const currentMetrics = await invoke('get_current_metrics');
-              console.log('Polled metrics received:', currentMetrics);
-              setMetrics(currentMetrics);
-            } catch (err) {
-              console.error('Polling fallback failed:', err);
-              if (err instanceof Error) {
-                console.error('Error details:', err.message, err.stack);
-              }
-            }
-          }, 2000); // Poll every 2 seconds as fallback
-          
-          // Store cleanup function for later
-          const cleanup = () => {
-            console.log('Cleaning up metrics listener...');
-            clearInterval(pollInterval);
-            unlisten();
-            invoke('stop_monitoring').catch(console.error);
-          };
-          
-          // Clear the timeout since we completed successfully
-          clearTimeout(initTimeout);
-          setError(null); // Clear any previous errors
-          console.log('Initialization completed successfully');
-          
-          // Return cleanup function
-          return cleanup;
-        } catch (err) {
-          console.error('Failed to set up metrics listener:', err);
-          console.log('Continuing without event listener, will use polling fallback');
-          
-          // Set up polling as primary method if event listener fails
-          const pollInterval = setInterval(async () => {
-            try {
-              console.log('Polling for metrics (primary method)...');
-              const currentMetrics = await invoke('get_current_metrics');
-              console.log('Polled metrics received (primary):', currentMetrics);
-              setMetrics(currentMetrics);
-            } catch (err) {
-              console.error('Polling failed (primary):', err);
-              if (err instanceof Error) {
-                console.error('Error details:', err.message, err.stack);
-              }
-            }
-          }, 2000);
-          
-          // Store cleanup function for later
-          const cleanup = () => {
-            console.log('Cleaning up polling...');
-            clearInterval(pollInterval);
-            invoke('stop_monitoring').catch(console.error);
-          };
+                     // Store cleanup function for later
+           const cleanup = () => {
+             console.log('Cleaning up polling...');
+             clearInterval(pollInterval);
+             invoke('stop_monitoring').catch(console.error);
+           };
           
           // Clear the timeout since we completed successfully
           clearTimeout(initTimeout);
           setError(null); // Clear any previous errors
           console.log('Initialization completed successfully');
           
+          // Set loading to false since we have system info and monitoring is started
+          setLoading(false);
+          console.log('Loading state set to false - initialization complete');
+          
           // Return cleanup function
           return cleanup;
-        }
+        
       } catch (err) {
         console.error('Initialization error:', err);
         setError(`Initialization error: ${err}`);
-      } finally {
-        console.log('Setting loading to false');
-        setLoading(false);
-        console.log('Loading state set to false');
       }
     };
     
@@ -190,13 +166,11 @@ export default function AppWrapper() {
 
   const toggleMonitoring = async () => {
     try {
-      const isTauri = await detectTauriEnvironment();
-        
-      if (!isTauri) {
+      if (!window.__TAURI__) {
         throw new Error('Tauri environment not available');
       }
       
-      const invoke = await getTauriInvoke();
+      const invoke = window.__TAURI__.core?.invoke || window.__TAURI__.tauri?.invoke;
       if (!invoke) {
         throw new Error('Tauri invoke not available');
       }
@@ -214,7 +188,7 @@ export default function AppWrapper() {
     }
   };
 
-  console.log('AppWrapper render - loading:', loading, 'systemInfo:', !!systemInfo, 'error:', error);
+  console.log('AppWrapper render - loading:', loading, 'systemInfo:', !!systemInfo, 'metrics:', !!metrics, 'error:', error);
   
   if (loading) {
     console.log('Rendering loading state');
@@ -223,6 +197,7 @@ export default function AppWrapper() {
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
           <p className="text-gray-400">Loading System Monitor...</p>
+          <p className="text-gray-500 text-sm mt-2">System Info: {systemInfo ? '✓' : '⏳'} | Metrics: {metrics ? '✓' : '⏳'}</p>
         </div>
       </div>
     );

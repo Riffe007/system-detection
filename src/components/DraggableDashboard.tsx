@@ -86,7 +86,7 @@ export const DraggableDashboard: React.FC<DraggableDashboardProps> = ({ systemIn
         title: 'Kernel Monitor',
         component: KernelMonitor,
         props: {},
-        size: 'large',
+        size: 'medium',
         visible: true
       },
       {
